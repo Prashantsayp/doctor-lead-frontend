@@ -1,20 +1,12 @@
 'use client'
 
-import * as React from 'react'
-import { ChakraProps, chakra, shouldForwardProp } from '@chakra-ui/react'
-import { HTMLMotionProps, isValidMotionProp, motion } from 'framer-motion'
-
-export interface MotionBoxProps
-  extends Omit<HTMLMotionProps<'div'>, 'children' | 'style'>,
-    Omit<ChakraProps, 'transition' | 'color'> {
-  children?: React.ReactNode
-}
+import { Box, BoxProps } from '@chakra-ui/react'
+import { HTMLMotionProps, motion } from 'framer-motion'
 
 /**
- * Chakra + Framer Motion compatible MotionBox
- * (works properly in Next.js App Router)
+ * Chakra + Framer Motion compatible MotionBox (Next.js App Router safe)
+ * Fixes transition typing issues (delay, duration, ease, etc.)
  */
-export const MotionBox = chakra(motion.div, {
-  shouldForwardProp: (prop) =>
-    isValidMotionProp(prop) || shouldForwardProp(prop),
-})
+export type MotionBoxProps = BoxProps & HTMLMotionProps<'div'>
+
+export const MotionBox = motion<BoxProps>(Box)

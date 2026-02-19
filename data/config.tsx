@@ -1,28 +1,20 @@
 import { Link } from '@saas-ui/react'
-import { NextSeoProps } from 'next-seo'
-import { FaFacebookF, FaLinkedinIn, FaYoutube, FaInstagram } from 'react-icons/fa'
-import { jwtDecode } from 'jwt-decode'
+import {
+  FaFacebookF,
+  FaLinkedinIn,
+  FaYoutube,
+  FaInstagram,
+} from 'react-icons/fa'
 import { Logo } from './logo'
 
-type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
-
-function getRoleFromToken(): AppRole | null {
-  if (typeof window === 'undefined') return null
-  const t = localStorage.getItem('token')
-  if (!t || t === 'null' || t === 'undefined' || !t.trim()) return null
-  try {
-    const decoded = jwtDecode<{ role?: AppRole }>(t)
-    return decoded?.role ?? null
-  } catch {
-    return null
-  }
+export type HeaderLink = {
+  label: string
+  href?: string
+  id?: string
 }
 
-function canSeeBulkSync(role: AppRole | null) {
-  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'OPERATION'
-}
-
-const ALL_HEADER_LINKS = [
+const ALL_HEADER_LINKS: HeaderLink[] = [
+  // ✅ ab yaha links add/uncomment karo
   // { label: 'Portal', href: '/' },
   // { label: 'Bulk Sync', href: '/bulk-sync' },
   // { label: 'Underwriting', href: '/underwriting' },
@@ -35,17 +27,19 @@ const siteConfig = {
   seo: {
     title: 'F2 Fintech Doctor',
     description: 'Doctor Intelligence Portal',
-  } as NextSeoProps,
+    titleTemplate: '%s | F2 Fintech Doctor',
+    openGraph: {
+      type: 'website',
+      site_name: 'F2 Fintech Doctor',
+    },
+    twitter: {
+      cardType: 'summary_large_image',
+    },
+  },
 
   header: {
-    links: (() => {
-      const role = getRoleFromToken()
-      return ALL_HEADER_LINKS.filter((l) => {
-        if (l.href === '/bulk-sync') return canSeeBulkSync(role)
-        return true
-      })
-    })(),
-
+    // ✅ static + typed (never[] issue gone)
+    links: ALL_HEADER_LINKS,
     user: {
       name: 'Admin',
       role: 'admin',
@@ -71,6 +65,11 @@ const siteConfig = {
       { href: 'https://www.youtube.com/@f2fintech', label: <FaYoutube size={14} /> },
     ],
   },
+} satisfies {
+  logo: any
+  seo: any
+  header: { links: HeaderLink[]; user: any }
+  footer: any
 }
 
 export default siteConfig

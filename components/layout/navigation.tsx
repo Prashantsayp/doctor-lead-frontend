@@ -4,30 +4,55 @@ import * as React from 'react'
 import { HStack, useDisclosure } from '@chakra-ui/react'
 import { useUpdateEffect } from '@chakra-ui/react'
 import { useScrollSpy } from 'hooks/use-scrollspy'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
+import { jwtDecode } from 'jwt-decode'
 
 import { MobileNavButton } from '#components/mobile-nav'
 import { MobileNavContent } from '#components/mobile-nav'
 import { NavLink } from '#components/nav-link'
-import siteConfig from '#data/config'
+import siteConfig, { HeaderLink } from '#data/config'
 
 import ThemeToggle from './theme-toggle'
 
+type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
+
+function getRoleFromToken(): AppRole | null {
+  if (typeof window === 'undefined') return null
+  const t = localStorage.getItem('token')
+  if (!t || t === 'null' || t === 'undefined' || !t.trim()) return null
+  try {
+    const decoded = jwtDecode<{ role?: AppRole }>(t)
+    return decoded?.role ?? null
+  } catch {
+    return null
+  }
+}
+
+function canSeeBulkSync(role: AppRole | null) {
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'OPERATION'
+}
+
 const Navigation: React.FC = () => {
   const mobileNav = useDisclosure()
-  const router = useRouter()
-
-  // ✅ build-time safety
   const path = usePathname() ?? ''
 
+  const headerLinks: HeaderLink[] = React.useMemo(() => {
+    const role = getRoleFromToken()
+    return siteConfig.header.links.filter((l) => {
+      if (l.href === '/bulk-sync') return canSeeBulkSync(role)
+      return true
+    })
+  }, [])
+
+  const linksWithId = headerLinks.filter(
+    (l): l is HeaderLink & { id: string } => typeof l.id === 'string' && l.id.length > 0,
+  )
+
   const activeId = useScrollSpy(
-    siteConfig.header.links
-      .filter((l) => !!l.id)
-      .map((l) => `[id="${l.id}"]`),
+    linksWithId.map((l) => `[id="${l.id}"]`),
     { threshold: 0.75 },
   )
 
-  // ✅ correct ref typing
   const mobileNavBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
   useUpdateEffect(() => {
@@ -36,20 +61,17 @@ const Navigation: React.FC = () => {
 
   return (
     <HStack spacing="2" flexShrink={0}>
-      {siteConfig.header.links.map(({ href, id, ...props }, i) => (
+      {headerLinks.map(({ href, id, ...props }, i) => (
         <NavLink
           display={['none', null, 'block']}
-          href={href || `/#${id}`}
+          href={href || (id ? `/#${id}` : '/')}
           key={i}
           isActive={
-            !!(
-              (id && activeId === id) ||
-              (href && !!path.match(new RegExp(href)))
-            )
+            !!((id && activeId === id) || (href && !!path.match(new RegExp(href))))
           }
           {...props}
         >
-          {String(props.label)}
+          {String((props as any).label)}
         </NavLink>
       ))}
 
