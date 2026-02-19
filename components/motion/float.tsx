@@ -12,13 +12,13 @@ export const Float: React.FC<
     <MotionBox
       // use y instead of translateY (framer standard)
       animate={{ y: steps }}
-      transition={{
-        delay,
-        duration: 5,
-        ease: 'easeInOut',
-        repeat: Infinity,
-        repeatType: 'reverse',
-      }}
+      // transition={{
+      //   delay,
+      //   duration: 5,
+      //   ease: 'easeInOut',
+      //   repeat: Infinity,
+      //   repeatType: 'reverse',
+      // }}
       {...rest}
     >
       {children}

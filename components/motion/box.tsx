@@ -1,12 +1,21 @@
 'use client'
 
-import { Box, BoxProps } from '@chakra-ui/react'
-import { HTMLMotionProps, motion } from 'framer-motion'
+import * as React from 'react'
+import { Box, type BoxProps } from '@chakra-ui/react'
+import { motion, type HTMLMotionProps } from 'framer-motion'
 
-/**
- * Chakra + Framer Motion compatible MotionBox (Next.js App Router safe)
- * Fixes transition typing issues (delay, duration, ease, etc.)
- */
+// Create a motion-enabled div
+const MotionDiv = motion.create('div')
+
 export type MotionBoxProps = BoxProps & HTMLMotionProps<'div'>
 
-export const MotionBox = motion<BoxProps>(Box)
+/**
+ * MotionBox: Chakra Box + Framer Motion (FM11 compatible)
+ * - Chakra styles go to <Box as={MotionDiv} />
+ * - Motion props (animate, initial, whileHover, transition, etc.) pass through
+ */
+export const MotionBox = React.forwardRef<HTMLDivElement, MotionBoxProps>(
+  function MotionBox(props, ref) {
+    return <Box ref={ref} as={MotionDiv} {...props} />
+  }
+)
