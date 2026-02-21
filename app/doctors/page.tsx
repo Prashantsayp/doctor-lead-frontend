@@ -13,7 +13,6 @@ import {
   Input,
   Select,
   Spinner,
-  Stack,
   Text,
   Table,
   Thead,
@@ -39,20 +38,15 @@ type DoctorLeadRow = {
   practiceType?: string[]
   consent?: boolean
   createdAt?: string
-
   remarks?: string
-
   monthlyGrossIncome?: number
   monthlyNetIncome?: number
   otherIncomeSources?: number
-
   monthlyEmi?: number
   activeLoans?: number
   loanType?: string
   hasOverdue?: boolean
-
   cibilScore?: number | null
-
   hasProperty?: boolean
   propertyValue?: number
   medicalEquipmentValue?: number
@@ -83,27 +77,64 @@ export default function AdminDoctorsPage() {
   const [role, setRole] = React.useState<AppRole | null>(null)
   const isAdmin = role === 'ADMIN'
 
-  // list state
   const [loading, setLoading] = React.useState(true)
   const [rows, setRows] = React.useState<DoctorLeadRow[]>([])
   const [err, setErr] = React.useState<string | null>(null)
 
-  // filters
+  // pagination
+  const [page, setPage] = React.useState(1)
+  const [limit, setLimit] = React.useState(20)
+  const [totalDoctors, setTotalDoctors] = React.useState(0)
+  const [totalPages, setTotalPages] = React.useState(1)
+
+  // search + risk
   const [q, setQ] = React.useState('')
   const [risk, setRisk] = React.useState<'all' | 'low' | 'medium' | 'high'>('all')
+
+  // debounce search
+  const [debouncedQ, setDebouncedQ] = React.useState(q)
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 350)
+    return () => clearTimeout(t)
+  }, [q])
 
   React.useEffect(() => {
     setRole(getRoleFromToken())
   }, [])
 
-  // ✅ admin-only
+  // admin-only
   React.useEffect(() => {
     if (role === null) return
     if (!isAdmin) {
-      toast({ title: 'Access denied', description: 'Only ADMIN can view all doctors.', status: 'warning' })
+      toast({
+        title: 'Access denied',
+        description: 'Only ADMIN can view all doctors.',
+        status: 'warning',
+      })
       router.replace('/')
     }
   }, [role, isAdmin, router, toast])
+
+  // reset page when search changes
+  React.useEffect(() => {
+    setPage(1)
+  }, [debouncedQ])
+
+  const fetchTotalDoctors = React.useCallback(async (token: string) => {
+    try {
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/count`)
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return
+      if (typeof data?.totalDoctors === 'number') setTotalDoctors(data.totalDoctors)
+      // fallback (if only {total} return ho)
+      if (typeof data?.total === 'number') setTotalDoctors(data.total)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   const fetchAll = React.useCallback(async () => {
     const token = getToken()
@@ -118,27 +149,39 @@ export default function AdminDoctorsPage() {
     setErr(null)
 
     try {
-      // ✅ IMPORTANT: change this endpoint to your "get all doctors" API
-      // Example used: /doctor-lead (GET all)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/get-lead`, {
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/get-lead`)
+      url.searchParams.set('page', String(page))
+      url.searchParams.set('limit', String(limit))
+      if (debouncedQ?.trim()) url.searchParams.set('search', debouncedQ.trim())
+
+      const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setErr(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed to fetch doctors')
+        setErr(
+          Array.isArray(data?.message)
+            ? data.message.join(', ')
+            : data?.message || 'Failed to fetch doctors',
+        )
         setRows([])
         return
       }
 
-      setRows(Array.isArray(data) ? data : data?.items ?? [])
+      const items = Array.isArray(data) ? data : data?.items ?? []
+      setRows(items)
+
+      if (typeof data?.totalPages === 'number') setTotalPages(data.totalPages || 1)
+
+      await fetchTotalDoctors(token)
     } catch {
       setErr('Server error')
       setRows([])
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, page, limit, debouncedQ, fetchTotalDoctors])
 
   React.useEffect(() => {
     if (!isAdmin) return
@@ -163,23 +206,17 @@ export default function AdminDoctorsPage() {
     return Math.round((filled / fields.length) * 100)
   }
 
-  const getRiskBucket = (completion: number) => (completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High')
-  const riskColor = (bucket: 'Low' | 'Medium' | 'High') => (bucket === 'Low' ? 'green' : bucket === 'Medium' ? 'yellow' : 'red')
+  const getRiskBucket = (completion: number) =>
+    completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High'
 
+  const riskColor = (bucket: 'Low' | 'Medium' | 'High') =>
+    bucket === 'Low' ? 'green' : bucket === 'Medium' ? 'yellow' : 'red'
+
+  // risk filter (client-side on current page)
   const filtered = React.useMemo(() => {
-    const s = q.trim().toLowerCase()
-
     return rows.filter((d) => {
       const completion = calcProfileCompletion(d)
       const bucket = getRiskBucket(completion)
-
-      const matchesQ =
-        !s ||
-        d.fullName?.toLowerCase().includes(s) ||
-        d.mobileNumber?.toLowerCase().includes(s) ||
-        d.email?.toLowerCase().includes(s) ||
-        (d.registrationNumber || '').toLowerCase().includes(s) ||
-        (d.cityOrPinCode || '').toLowerCase().includes(s)
 
       const matchesRisk =
         risk === 'all' ||
@@ -187,15 +224,25 @@ export default function AdminDoctorsPage() {
         (risk === 'medium' && bucket === 'Medium') ||
         (risk === 'high' && bucket === 'High')
 
-      return matchesQ && matchesRisk
+      return matchesRisk
     })
-  }, [rows, q, risk])
+  }, [rows, risk])
+
+  const canPrev = page > 1
+  const canNext = page < totalPages
 
   return (
     <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
       <Container maxW="container.2xl">
         {/* Header */}
-        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
+        <Box
+          bg="white"
+          border="1px solid"
+          borderColor="gray.200"
+          borderRadius="2xl"
+          p={{ base: 4, md: 6 }}
+          boxShadow="sm"
+        >
           <HStack justify="space-between" flexWrap="wrap" gap={3}>
             <Box>
               <Heading size="md">All Doctors (Admin)</Heading>
@@ -204,41 +251,56 @@ export default function AdminDoctorsPage() {
               </Text>
             </Box>
 
-            <HStack>
-              <Button variant="outline" borderRadius="xl" onClick={fetchAll} isDisabled={loading}>
-                Refresh
-              </Button>
-            </HStack>
+            {/* ✅ Total Doctors moved to right (Refresh removed) */}
+            {!loading ? (
+              <Badge
+                borderRadius="full"
+                px={4}
+                py={2}
+                fontSize="sm"
+                colorScheme="blue"
+                variant="subtle"
+              >
+                Total Doctors: {totalDoctors}
+              </Badge>
+            ) : null}
           </HStack>
 
           <Divider my={4} />
 
-          <HStack spacing={3} flexWrap="wrap">
+          <HStack spacing={3} flexWrap="wrap" align="center">
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search: name / mobile / email / reg no / city"
-              maxW="420px"
+              maxW="520px"
               bg="white"
             />
 
-            <Select value={risk} onChange={(e) => setRisk(e.target.value as any)} maxW="220px" bg="white">
+            <Select
+              value={risk}
+              onChange={(e) => setRisk(e.target.value as any)}
+              maxW="220px"
+              bg="white"
+            >
               <option value="all">All Risk Buckets</option>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </Select>
-
-            {!loading ? (
-              <Text fontSize="sm" color="gray.600">
-                Showing <b>{filtered.length}</b> / {rows.length}
-              </Text>
-            ) : null}
           </HStack>
         </Box>
 
         {/* Table */}
-        <Box mt={6} bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
+        <Box
+          mt={6}
+          bg="white"
+          border="1px solid"
+          borderColor="gray.200"
+          borderRadius="2xl"
+          p={{ base: 4, md: 6 }}
+          boxShadow="sm"
+        >
           {loading ? (
             <HStack py={10} justify="center">
               <Spinner />
@@ -284,7 +346,18 @@ export default function AdminDoctorsPage() {
                         <Td>{d.registrationNumber || '—'}</Td>
                         <Td>{d.cityOrPinCode || '—'}</Td>
                         <Td>
-                          <Badge borderRadius="full" px={2} py={0.5} colorScheme={completion >= 70 ? 'green' : completion >= 40 ? 'yellow' : 'red'}>
+                          <Badge
+                            borderRadius="full"
+                            px={2}
+                            py={0.5}
+                            colorScheme={
+                              completion >= 70
+                                ? 'green'
+                                : completion >= 40
+                                ? 'yellow'
+                                : 'red'
+                            }
+                          >
                             {completion}%
                           </Badge>
                         </Td>
@@ -312,6 +385,52 @@ export default function AdminDoctorsPage() {
                   })}
                 </Tbody>
               </Table>
+
+              {/* Bottom Pagination: ONE LINE */}
+              <Divider my={4} />
+              <HStack justify="space-between" flexWrap="wrap" gap={3}>
+                <Text fontSize="sm" color="gray.600">
+                  Page <b>{page}</b> / {totalPages}
+                </Text>
+
+                <HStack spacing={3}>
+                  <Select
+                    value={String(limit)}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value))
+                      setPage(1)
+                    }}
+                    maxW="140px"
+                    bg="white"
+                    borderRadius="xl"
+                  >
+                    <option value="10">10 / page</option>
+                    <option value="20">20 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </Select>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    borderRadius="xl"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    isDisabled={!canPrev}
+                  >
+                    Prev
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    borderRadius="xl"
+                    onClick={() => setPage((p) => p + 1)}
+                    isDisabled={!canNext}
+                  >
+                    Next
+                  </Button>
+                </HStack>
+              </HStack>
             </Box>
           )}
         </Box>

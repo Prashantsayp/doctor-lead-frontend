@@ -55,6 +55,14 @@ type UserRow = {
   createdAt?: string
 }
 
+type PaginatedUsersResponse = {
+  items: UserRow[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
 const getToken = () => {
   if (typeof window === 'undefined') return null
   const t = localStorage.getItem('token')
@@ -73,6 +81,16 @@ const getRoleFromToken = (): AppRole | null => {
   }
 }
 
+// ✅ small debounce hook (so search typing pe API spam na ho)
+function useDebouncedValue<T>(value: T, delay = 300) {
+  const [debounced, setDebounced] = React.useState(value)
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
 export default function UsersPage() {
   const router = useRouter()
   const toast = useToast()
@@ -84,7 +102,16 @@ export default function UsersPage() {
   const [loading, setLoading] = React.useState(true)
   const [users, setUsers] = React.useState<UserRow[]>([])
   const [err, setErr] = React.useState<string | null>(null)
+
+  // ✅ Server-side pagination state
+  const [page, setPage] = React.useState(1)
+  const [limit, setLimit] = React.useState(10)
+  const [total, setTotal] = React.useState(0)
+  const [pages, setPages] = React.useState(1)
+
+  // ✅ Server-side search (q)
   const [q, setQ] = React.useState('')
+  const debouncedQ = useDebouncedValue(q, 350)
 
   // ====== ADD MODAL STATE ======
   const [isAddOpen, setIsAddOpen] = React.useState(false)
@@ -162,31 +189,56 @@ export default function UsersPage() {
 
     setLoading(true)
     setErr(null)
+
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/get-users`, {
+      const params = new URLSearchParams()
+      params.set('page', String(page))
+      params.set('limit', String(limit))
+      if (debouncedQ.trim()) params.set('q', debouncedQ.trim())
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/get-users?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
+
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setErr(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed to fetch users')
+        const msg = Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed to fetch users'
+        setErr(msg)
         setUsers([])
+        setTotal(0)
+        setPages(1)
         return
       }
 
-      setUsers(Array.isArray(data) ? data : [])
+      // ✅ expected: { items, total, page, limit, pages }
+      const d = data as PaginatedUsersResponse
+      setUsers(Array.isArray(d?.items) ? d.items : [])
+      setTotal(typeof d?.total === 'number' ? d.total : 0)
+      setPages(typeof d?.pages === 'number' ? d.pages : 1)
+
+      // safety: server page might adjust
+      if (typeof d?.page === 'number' && d.page !== page) setPage(d.page)
+      if (typeof d?.limit === 'number' && d.limit !== limit) setLimit(d.limit)
     } catch {
       setErr('Server error')
       setUsers([])
+      setTotal(0)
+      setPages(1)
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, page, limit, debouncedQ])
 
   React.useEffect(() => {
     if (!isAdmin) return
     fetchUsers()
   }, [isAdmin, fetchUsers])
+
+  // ✅ search change pe page reset (debounce ke pehle)
+  React.useEffect(() => {
+    setPage(1)
+  }, [debouncedQ])
 
   const validateAdd = () => {
     const n = name.trim()
@@ -236,6 +288,9 @@ export default function UsersPage() {
 
       toast({ title: 'User created', status: 'success' })
       setIsAddOpen(false)
+
+      // ✅ after create, go to first page and refetch
+      setPage(1)
       await fetchUsers()
     } catch {
       toast({ title: 'Server error', status: 'error' })
@@ -373,14 +428,8 @@ export default function UsersPage() {
     )
   }
 
-  const filtered = React.useMemo(() => {
-    const s = q.trim().toLowerCase()
-    if (!s) return users
-    return users.filter((u) => {
-      const hay = `${u.name} ${u.email} ${u.designation || ''} ${u.role} ${u.status}`.toLowerCase()
-      return hay.includes(s)
-    })
-  }, [users, q])
+  const startIndex = total === 0 ? 0 : (page - 1) * limit + 1
+  const endIndex = Math.min(page * limit, total)
 
   return (
     <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
@@ -431,7 +480,13 @@ export default function UsersPage() {
                 <InputLeftElement pointerEvents="none">
                   <Icon as={FiSearch} color="gray.400" />
                 </InputLeftElement>
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, email, role..." borderRadius="xl" bg="gray.50" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search by name, email, role..."
+                  borderRadius="xl"
+                  bg="gray.50"
+                />
               </InputGroup>
 
               <Text fontSize="sm" color="gray.600">
@@ -439,7 +494,13 @@ export default function UsersPage() {
                   'Loading...'
                 ) : (
                   <>
-                    Total: <b>{filtered.length}</b>
+                    Total: <b>{total}</b>
+                    {total > 0 ? (
+                      <>
+                        {' '}
+                        • Showing <b>{startIndex}</b>–<b>{endIndex}</b>
+                      </>
+                    ) : null}
                   </>
                 )}
               </Text>
@@ -462,50 +523,110 @@ export default function UsersPage() {
               <Spinner />
               <Text color="gray.600">Loading users...</Text>
             </HStack>
-          ) : filtered.length === 0 ? (
+          ) : users.length === 0 ? (
             <Box py={10} textAlign="center">
               <Text color="gray.500">No users found.</Text>
             </Box>
           ) : (
-            <Box overflowX="auto">
-              <Table variant="simple" size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>Name</Th>
-                    <Th>Email</Th>
-                    <Th>Designation</Th>
-                    <Th>Role</Th>
-                    <Th>Status</Th>
-                    <Th>Created</Th>
-                    <Th textAlign="right">Actions</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {filtered.map((u) => (
-                    <Tr key={u._id} _hover={{ bg: 'gray.50' }}>
-                      <Td fontWeight="800">{u.name || '—'}</Td>
-                      <Td>{u.email || '—'}</Td>
-                      <Td>{u.designation?.trim() ? u.designation : '—'}</Td>
-                      <Td>{roleBadge(u.role)}</Td>
-                      <Td>{statusBadge(u.status)}</Td>
-                      <Td fontSize="xs" color="gray.600">
-                        {u.createdAt ? new Date(u.createdAt).toLocaleString('en-IN') : '—'}
-                      </Td>
-                      <Td textAlign="right">
-                        <HStack justify="flex-end">
-                          <Tooltip label="Edit user">
-                            <IconButton aria-label="Edit" size="sm" borderRadius="lg" icon={<Icon as={FiEdit2} />} onClick={() => openEdit(u)} />
-                          </Tooltip>
-                          <Tooltip label="Change password">
-                            <IconButton aria-label="Password" size="sm" borderRadius="lg" icon={<Icon as={FiKey} />} onClick={() => openPassword(u)} />
-                          </Tooltip>
-                        </HStack>
-                      </Td>
+            <>
+              <Box overflowX="auto">
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Name</Th>
+                      <Th>Email</Th>
+                      <Th>Designation</Th>
+                      <Th>Role</Th>
+                      <Th>Status</Th>
+                      <Th>Created</Th>
+                      <Th textAlign="right">Actions</Th>
                     </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </Box>
+                  </Thead>
+                  <Tbody>
+                    {users.map((u) => (
+                      <Tr key={u._id} _hover={{ bg: 'gray.50' }}>
+                        <Td fontWeight="800">{u.name || '—'}</Td>
+                        <Td>{u.email || '—'}</Td>
+                        <Td>{u.designation?.trim() ? u.designation : '—'}</Td>
+                        <Td>{roleBadge(u.role)}</Td>
+                        <Td>{statusBadge(u.status)}</Td>
+                        <Td fontSize="xs" color="gray.600">
+                          {u.createdAt ? new Date(u.createdAt).toLocaleString('en-IN') : '—'}
+                        </Td>
+                        <Td textAlign="right">
+                          <HStack justify="flex-end">
+                            <Tooltip label="Edit user">
+                              <IconButton
+                                aria-label="Edit"
+                                size="sm"
+                                borderRadius="lg"
+                                icon={<Icon as={FiEdit2} />}
+                                onClick={() => openEdit(u)}
+                              />
+                            </Tooltip>
+                            <Tooltip label="Change password">
+                              <IconButton
+                                aria-label="Password"
+                                size="sm"
+                                borderRadius="lg"
+                                icon={<Icon as={FiKey} />}
+                                onClick={() => openPassword(u)}
+                              />
+                            </Tooltip>
+                          </HStack>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </Box>
+
+              {/* ✅ Pagination Bar */}
+              <HStack mt={4} justify="space-between" flexWrap="wrap" gap={3}>
+                <Text fontSize="sm" color="gray.600">
+                  Page <b>{page}</b> of <b>{pages}</b>
+                </Text>
+
+                <HStack>
+                  <Select
+                    size="sm"
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value))
+                      setPage(1)
+                    }}
+                    w="140px"
+                    borderRadius="xl"
+                  >
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </Select>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    borderRadius="xl"
+                    onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                    isDisabled={loading || page <= 1}
+                  >
+                    Prev
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    borderRadius="xl"
+                    onClick={() => setPage((p) => Math.min(p + 1, pages))}
+                    isDisabled={loading || page >= pages}
+                  >
+                    Next
+                  </Button>
+                </HStack>
+              </HStack>
+            </>
           )}
         </Box>
 
@@ -693,8 +814,6 @@ export default function UsersPage() {
                     </InputRightElement>
                   </InputGroup>
                 </FormControl>
-
-              
               </Stack>
             </ModalBody>
             <ModalFooter py={3}>
