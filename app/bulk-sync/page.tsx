@@ -24,7 +24,6 @@ export default function BulkSyncPage() {
   const [uploading, setUploading] = React.useState(false)
 
   const inputRef = React.useRef<HTMLInputElement | null>(null)
-
   const pickFile = () => inputRef.current?.click()
 
   const validateFile = (f: File) => {
@@ -56,14 +55,24 @@ export default function BulkSyncPage() {
     if (dropped) onFileSelected(dropped)
   }
 
-  // ✅ NEW: Generate + download sample CSV (no backend needed)
+  // ✅ strict CSV encoder (prevents missing columns / shifting)
+  const csvCell = (v: any) => {
+    const s = v === null || v === undefined ? '' : String(v)
+    return `"${s.replace(/"/g, '""')}"`
+  }
+
   const downloadSampleCsv = () => {
+    // ✅ mandatory: fullName, mobileNumber, cityOrPinCode
+    // ✅ optional: includes panNumber + aadharNumber (NOT mandatory)
     const headers = [
       'fullName',
       'mobileNumber',
+      'cityOrPinCode',
+
       'email',
       'registrationNumber',
-      'cityOrPinCode',
+      'panNumber',
+      'aadharNumber',
       'yearsOfPractice',
       'qualification',
       'practiceType',
@@ -82,33 +91,39 @@ export default function BulkSyncPage() {
       'cibilScore',
     ]
 
-    const rows: string[][] = [
+    const rows: (string | number | boolean | null | undefined)[][] = [
       [
         'Dr. Asha Mehta',
         '9876543210',
+        'Delhi',
+
         'asha.mehta@example.com',
         'REG-DEL-12345',
-        'Delhi',
-        '8',
-        '"MBBS,MD"',
-        '"Clinic,Hospital"',
+        'ABCDE1234F', // ✅ panNumber
+        '123412341234', // ✅ aadharNumber
+        8,
+        'MBBS|MD', // ✅ use | to avoid comma issues in CSV
+        'Clinic|Hospital',
         'Interested in working capital',
-        'true',
-        '300000',
-        '220000',
-        '15000',
-        '25000',
-        '2',
+        true,
+        300000,
+        220000,
+        15000,
+        25000,
+        2,
         'Business Loan',
-        'false',
-        'true',
-        '15000000',
-        '300000',
-        '782',
+        false,
+        true,
+        15000000,
+        300000,
+        782,
       ],
     ]
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const csv = [
+      headers.map(csvCell).join(','),
+      ...rows.map((r) => headers.map((_, i) => csvCell(r[i])).join(',')),
+    ].join('\n')
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -149,9 +164,7 @@ export default function BulkSyncPage() {
       if (!res.ok) {
         toast({
           title: 'Upload failed',
-          description: Array.isArray(data?.message)
-            ? data.message.join(', ')
-            : data?.message || 'Error',
+          description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
           status: 'error',
         })
         return
@@ -176,201 +189,196 @@ export default function BulkSyncPage() {
   }
 
   return (
-    <>
-      {/* ✅ fixed navbar spacing */}
-      <Box minH="100vh" bg="gray.50" pt="90px" pb={{ base: 10, md: 14 }}>
-        <Container maxW="container.lg">
-          {/* Title */}
-          <Stack spacing={2} align="center" textAlign="center" mb={{ base: 8, md: 10 }}>
-            <HStack spacing={2}>
-              <Icon as={FiDatabase} boxSize={7} color="blue.600" />
-              <Heading fontSize={{ base: '2xl', md: '3xl' }} color="blue.700" fontWeight="800">
-                Data Synchronization Engine
-              </Heading>
-            </HStack>
-            <Text color="gray.600" maxW="2xl">
-              Bulk upload doctor records to identify existing profiles and capture new leads at scale.
-            </Text>
-          </Stack>
+    <Box minH="100vh" bg="gray.50" pt="90px" pb={{ base: 10, md: 14 }}>
+      <Container maxW="container.lg">
+        {/* Title */}
+        <Stack spacing={2} align="center" textAlign="center" mb={{ base: 8, md: 10 }}>
+          <HStack spacing={2}>
+            <Icon as={FiDatabase} boxSize={7} color="blue.600" />
+            <Heading fontSize={{ base: '2xl', md: '3xl' }} color="blue.700" fontWeight="800">
+              Data Synchronization Engine
+            </Heading>
+          </HStack>
+          <Text color="gray.600" maxW="2xl">
+            Bulk upload doctor records to identify existing profiles and capture new leads at scale.
+          </Text>
+        </Stack>
 
-          <Flex gap={6} direction={{ base: 'column', md: 'row' }} align="stretch">
-            {/* Upload Card */}
+        <Flex gap={6} direction={{ base: 'column', md: 'row' }} align="stretch">
+          {/* Upload Card */}
+          <Box
+            flex="1"
+            bg="white"
+            borderRadius="2xl"
+            border="1px solid"
+            borderColor="gray.200"
+            p={{ base: 6, md: 8 }}
+            boxShadow="sm"
+          >
             <Box
-              flex="1"
-              bg="white"
+              border="2px dashed"
+              borderColor={dragOver ? 'blue.400' : 'gray.200'}
+              bg={dragOver ? 'blue.50' : 'transparent'}
               borderRadius="2xl"
-              border="1px solid"
-              borderColor="gray.200"
-              p={{ base: 6, md: 8 }}
-              boxShadow="sm"
+              py={{ base: 10, md: 12 }}
+              px={{ base: 5, md: 8 }}
+              textAlign="center"
+              transition="0.15s"
+              onDragEnter={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setDragOver(true)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setDragOver(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setDragOver(false)
+              }}
+              onDrop={handleDrop}
             >
               <Box
-                border="2px dashed"
-                borderColor={dragOver ? 'blue.400' : 'gray.200'}
-                bg={dragOver ? 'blue.50' : 'transparent'}
-                borderRadius="2xl"
-                py={{ base: 10, md: 12 }}
-                px={{ base: 5, md: 8 }}
-                textAlign="center"
-                transition="0.15s"
-                onDragEnter={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setDragOver(true)
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setDragOver(true)
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setDragOver(false)
-                }}
-                onDrop={handleDrop}
+                mx="auto"
+                mb={4}
+                w="64px"
+                h="64px"
+                borderRadius="full"
+                bg="blue.50"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
               >
+                <Icon as={FiUpload} boxSize={7} color="blue.600" />
+              </Box>
+
+              <Heading size="md" color="gray.800" mb={2}>
+                Upload Doctor Database
+              </Heading>
+              <Text color="gray.500" fontSize="sm" mb={5}>
+                Drag and drop your CSV/Excel file or click to browse
+              </Text>
+
+              <Input
+                ref={inputRef}
+                type="file"
+                accept=".csv,.xlsx"
+                display="none"
+                onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
+              />
+
+              <HStack justify="center" spacing={4}>
+                <Button variant="outline" borderRadius="xl" onClick={downloadSampleCsv}>
+                  Download Sample
+                </Button>
+
+                <Button colorScheme="blue" borderRadius="xl" onClick={pickFile}>
+                  Select File
+                </Button>
+              </HStack>
+
+              <Text mt={4} fontSize="xs" color="gray.500">
+                Supported: .csv, .xlsx (Max 1M rows)
+              </Text>
+
+              {file ? (
+                <Box mt={6} p={3} border="1px solid" borderColor="gray.200" borderRadius="xl" bg="gray.50">
+                  <HStack justify="space-between">
+                    <Box textAlign="left" maxW="70%">
+                      <Text fontWeight="700" fontSize="sm" color="gray.700" noOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {(file.size / (1024 * 1024)).toFixed(2)} MB
+                      </Text>
+                    </Box>
+
+                    <Button size="sm" variant="ghost" onClick={() => setFile(null)}>
+                      Remove
+                    </Button>
+                  </HStack>
+
+                  <Button
+                    mt={3}
+                    w="100%"
+                    colorScheme="blue"
+                    borderRadius="xl"
+                    onClick={handleUpload}
+                    isLoading={uploading}
+                    loadingText="Uploading..."
+                  >
+                    Upload & Sync
+                  </Button>
+                </Box>
+              ) : null}
+            </Box>
+          </Box>
+
+          {/* Sync Logic Card */}
+          <Box
+            w={{ base: '100%', md: '320px' }}
+            bg="white"
+            borderRadius="2xl"
+            border="1px solid"
+            borderColor="gray.200"
+            p={6}
+            boxShadow="sm"
+          >
+            <Text fontWeight="800" color="gray.700" fontSize="sm" mb={4}>
+              SYNC LOGIC
+            </Text>
+
+            <Stack spacing={4}>
+              <HStack align="start" spacing={3}>
                 <Box
-                  mx="auto"
-                  mb={4}
-                  w="64px"
-                  h="64px"
-                  borderRadius="full"
+                  w="34px"
+                  h="34px"
+                  borderRadius="lg"
                   bg="blue.50"
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
                 >
-                  <Icon as={FiUpload} boxSize={7} color="blue.600" />
+                  <Icon as={FiSearch} color="blue.600" />
                 </Box>
+                <Box>
+                  <Text fontWeight="700" color="gray.800" fontSize="sm">
+                    Deduplication
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    Checks against Mobile, Email, and Reg No.
+                  </Text>
+                </Box>
+              </HStack>
 
-                <Heading size="md" color="gray.800" mb={2}>
-                  Upload Doctor Database
-                </Heading>
-                <Text color="gray.500" fontSize="sm" mb={5}>
-                  Drag and drop your CSV/Excel file or click to browse
-                </Text>
-
-                <Input
-                  ref={inputRef}
-                  type="file"
-                  accept=".csv,.xlsx"
-                  display="none"
-                  onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
-                />
-
-                {/* ✅ UPDATED: Simple buttons (Download first, then Select) */}
-                <HStack justify="center" spacing={4}>
-                  <Button variant="outline" borderRadius="xl" onClick={downloadSampleCsv}>
-                    Download Sample
-                  </Button>
-
-                  <Button colorScheme="blue" borderRadius="xl" onClick={pickFile}>
-                    Select File
-                  </Button>
-                </HStack>
-
-                <Text mt={4} fontSize="xs" color="gray.500">
-                  Supported: .csv, .xlsx (Max 1M rows)
-                </Text>
-
-                {/* Selected file */}
-                {file ? (
-                  <Box mt={6} p={3} border="1px solid" borderColor="gray.200" borderRadius="xl" bg="gray.50">
-                    <HStack justify="space-between">
-                      <Box textAlign="left" maxW="70%">
-                        <Text fontWeight="700" fontSize="sm" color="gray.700" noOfLines={1}>
-                          {file.name}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {(file.size / (1024 * 1024)).toFixed(2)} MB
-                        </Text>
-                      </Box>
-
-                      <Button size="sm" variant="ghost" onClick={() => setFile(null)}>
-                        Remove
-                      </Button>
-                    </HStack>
-
-                    <Button
-                      mt={3}
-                      w="100%"
-                      colorScheme="blue"
-                      borderRadius="xl"
-                      onClick={handleUpload}
-                      isLoading={uploading}
-                      loadingText="Uploading..."
-                    >
-                      Upload & Sync
-                    </Button>
-                  </Box>
-                ) : null}
-              </Box>
-            </Box>
-
-            {/* Sync Logic Card */}
-            <Box
-              w={{ base: '100%', md: '320px' }}
-              bg="white"
-              borderRadius="2xl"
-              border="1px solid"
-              borderColor="gray.200"
-              p={6}
-              boxShadow="sm"
-            >
-              <Text fontWeight="800" color="gray.700" fontSize="sm" mb={4}>
-                SYNC LOGIC
-              </Text>
-
-              <Stack spacing={4}>
-                <HStack align="start" spacing={3}>
-                  <Box
-                    w="34px"
-                    h="34px"
-                    borderRadius="lg"
-                    bg="blue.50"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    <Icon as={FiSearch} color="blue.600" />
-                  </Box>
-                  <Box>
-                    <Text fontWeight="700" color="gray.800" fontSize="sm">
-                      Deduplication
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      Checks against Mobile, Email, and Reg No.
-                    </Text>
-                  </Box>
-                </HStack>
-
-                <HStack align="start" spacing={3}>
-                  <Box
-                    w="34px"
-                    h="34px"
-                    borderRadius="lg"
-                    bg="green.50"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    <Icon as={FiCheckCircle} color="green.600" />
-                  </Box>
-                  <Box>
-                    <Text fontWeight="700" color="gray.800" fontSize="sm">
-                      Conflict Resolution
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      Existing records are automatically enriched with new data points.
-                    </Text>
-                  </Box>
-                </HStack>
-              </Stack>
-            </Box>
-          </Flex>
-        </Container>
-      </Box>
-    </>
+              <HStack align="start" spacing={3}>
+                <Box
+                  w="34px"
+                  h="34px"
+                  borderRadius="lg"
+                  bg="green.50"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Icon as={FiCheckCircle} color="green.600" />
+                </Box>
+                <Box>
+                  <Text fontWeight="700" color="gray.800" fontSize="sm">
+                    Conflict Resolution
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    Existing records are automatically enriched with new data points.
+                  </Text>
+                </Box>
+              </HStack>
+            </Stack>
+          </Box>
+        </Flex>
+      </Container>
+    </Box>
   )
 }

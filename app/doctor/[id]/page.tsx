@@ -10,8 +10,6 @@ import {
   Button,
   Container,
   Divider,
-  Grid,
-  GridItem,
   HStack,
   Heading,
   IconButton,
@@ -36,28 +34,42 @@ import {
   FormControl,
   FormLabel,
   useToast,
+  SimpleGrid,
+  Stat,
+  StatNumber,
+  StatHelpText,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
 } from '@chakra-ui/react'
-import { EditIcon } from '@chakra-ui/icons'
+import { keyframes } from '@emotion/react'
+import { EditIcon, CheckCircleIcon, ExternalLinkIcon, CopyIcon } from '@chakra-ui/icons'
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 
 type DoctorLead = {
   _id: string
   fullName: string
-  registrationNumber?: string
   mobileNumber: string
-  email: string
-  cityOrPinCode?: string
+  email?: string
+  registrationNumber?: string
+  panNumber?: string
+  aadharNumber?: string
+  isVerified?: boolean
+  cityOrPinCode: string
+
   yearsOfPractice?: number
   qualification?: string[]
   practiceType?: string[]
-  consent?: boolean
-  createdAt?: string
 
-  // ✅ we will store remarks as JSON string (array of comments) for backward compatibility
-  // old data: plain string
-  // new data: JSON.stringify(RemarksItem[])
   remarks?: string
+  createdAt?: string
 
   monthlyGrossIncome?: number
   monthlyNetIncome?: number
@@ -65,27 +77,41 @@ type DoctorLead = {
 
   monthlyEmi?: number
   activeLoans?: number
-  loanType?: string[] | string
+  loanType?: string[]
   hasOverdue?: boolean
-
-  cibilScore?: number | null
 
   hasProperty?: boolean
   propertyValue?: number
   medicalEquipmentValue?: number
+
+  cibilScore?: number | null
+
+  consent?: boolean
 }
 
 type RemarksItem = {
   id: string
   text: string
-  createdAt: string // ISO
-  createdBy?: string // name/email/role
-  updatedAt?: string // ISO (optional)
+  createdAt: string
+  createdBy?: string
+  updatedAt?: string
+  updatedBy?: string
   isDeleted?: boolean
 }
 
-// ✅ IMPORTANT: number fields are number | '' so UI can show blank instead of 0
+type UpdateTab = 'basic' | 'income' | 'obligations' | 'assets' | 'credit'
+
 type UpdatePayload = Partial<{
+  fullName: string
+  mobileNumber: string
+  email: string
+  registrationNumber: string
+  panNumber: string
+  aadharNumber: string
+  cityOrPinCode: string
+  yearsOfPractice: number | '' | null
+  qualification: string[]
+  practiceType: string[]
   monthlyGrossIncome: number | ''
   monthlyNetIncome: number | ''
   otherIncomeSources: number | ''
@@ -95,26 +121,12 @@ type UpdatePayload = Partial<{
   loanType: string[]
   hasOverdue: boolean
 
-  cibilScore: number | '' | null
-
   hasProperty: boolean
   propertyValue: number | ''
   medicalEquipmentValue: number | ''
 
-  consent: boolean
+  cibilScore: number | '' | null
   _loanTypeDraft: string
-}>
-
-// ✅ Pencil modal payload (basic/profile only)
-type ProfileEditPayload = Partial<{
-  fullName: string
-  registrationNumber: string
-  mobileNumber: string
-  email: string
-  cityOrPinCode: string
-  yearsOfPractice: number | '' | null
-  qualification: string[]
-  practiceType: string[]
   _qualificationDraft: string
   _practiceTypeDraft: string
 }>
@@ -132,38 +144,28 @@ export default function DoctorProfilePage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const toast = useToast()
-
   const id = String(params?.id || '')
 
   const [loading, setLoading] = React.useState(true)
   const [doctor, setDoctor] = React.useState<DoctorLead | null>(null)
 
-  // ✅ role (from token)
   const [role, setRole] = React.useState<AppRole | null>(null)
-  const [currentUserLabel, setCurrentUserLabel] = React.useState<string>('')
+  const [currentUserLabel, setCurrentUserLabel] = React.useState('')
 
-  // ✅ remarks (comment style)
   const [remarkText, setRemarkText] = React.useState('')
   const [savingRemark, setSavingRemark] = React.useState(false)
   const [remarks, setRemarks] = React.useState<RemarksItem[]>([])
   const [editingRemarkId, setEditingRemarkId] = React.useState<string | null>(null)
-  const [editRemarkText, setEditRemarkText] = React.useState<string>('')
+  const [editRemarkText, setEditRemarkText] = React.useState('')
 
-  // ✅ 3 tabs inside Financial Brain Insights
-  const [brainTab, setBrainTab] = React.useState<'insights' | 'captured' | 'extra'>('captured')
-
-  // ✅ ENRICH FURTHER MODAL (financial)
   const [isUpdateOpen, setIsUpdateOpen] = React.useState(false)
   const [savingUpdate, setSavingUpdate] = React.useState(false)
-  const [updateTab, setUpdateTab] = React.useState<'income' | 'obligations' | 'assets' | 'credit'>('income')
-  const [form, setForm] = React.useState<UpdatePayload>({ loanType: [], _loanTypeDraft: '' })
-
-  // ✅ PENCIL BASIC PROFILE MODAL
-  const [isProfileEditOpen, setIsProfileEditOpen] = React.useState(false)
-  const [savingProfileEdit, setSavingProfileEdit] = React.useState(false)
-  const [profileForm, setProfileForm] = React.useState<ProfileEditPayload>({
+  const [updateTab, setUpdateTab] = React.useState<UpdateTab>('basic')
+  const [form, setForm] = React.useState<UpdatePayload>({
+    loanType: [],
     qualification: [],
     practiceType: [],
+    _loanTypeDraft: '',
     _qualificationDraft: '',
     _practiceTypeDraft: '',
   })
@@ -177,7 +179,6 @@ export default function DoctorProfilePage() {
     return t
   }
 
-  // ✅ read role + user once
   React.useEffect(() => {
     const token = getToken()
     if (!token) return
@@ -196,7 +197,6 @@ export default function DoctorProfilePage() {
       setRole(null)
       setCurrentUserLabel('')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchDoctor = React.useCallback(async () => {
@@ -207,6 +207,7 @@ export default function DoctorProfilePage() {
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/${id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: 'no-store',
       })
 
       const data = await res.json().catch(() => ({}))
@@ -220,11 +221,8 @@ export default function DoctorProfilePage() {
         return
       }
 
-      setDoctor(data)
-
-      // ✅ parse comments from remarks field
-      const parsed = parseRemarks(data?.remarks)
-      setRemarks(parsed)
+      setDoctor(data as DoctorLead)
+      setRemarks(parseRemarks((data as any)?.remarks))
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {
@@ -233,17 +231,9 @@ export default function DoctorProfilePage() {
   }, [id, router, toast])
 
   React.useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      if (!mounted) return
-      await fetchDoctor()
-    })()
-    return () => {
-      mounted = false
-    }
+    void fetchDoctor()
   }, [fetchDoctor])
 
-  // ✅ SAVE remarks array to backend (stored in doctor.remarks as JSON string)
   const saveRemarksArray = async (nextRemarks: RemarksItem[]) => {
     const token = getToken()
     if (!token) {
@@ -252,33 +242,40 @@ export default function DoctorProfilePage() {
       return false
     }
 
+    const prevRemarks = remarks
+    const prevDoctor = doctor
+
+    setRemarks(nextRemarks)
+    setDoctor((prev) => (prev ? { ...prev, remarks: JSON.stringify(nextRemarks) } : prev))
+
     setSavingRemark(true)
     try {
-      const payload = { remarks: JSON.stringify(nextRemarks) } // ✅ backend still uses same "remarks" key
+      const payload = { remarks: JSON.stringify(nextRemarks) }
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       })
 
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        setRemarks(prevRemarks)
+        setDoctor(prevDoctor)
         toast({
-          title: 'Failed to save remark',
+          title: 'Failed to save comment',
           description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
           status: 'error',
         })
         return false
       }
 
-      setDoctor(data)
-      setRemarks(parseRemarks(data?.remarks))
+      setDoctor(data as DoctorLead)
+      setRemarks(parseRemarks((data as any)?.remarks))
       return true
     } catch {
+      setRemarks(prevRemarks)
+      setDoctor(prevDoctor)
       toast({ title: 'Server error', status: 'error' })
       return false
     } finally {
@@ -286,39 +283,23 @@ export default function DoctorProfilePage() {
     }
   }
 
-  // ✅ add new comment
   const addRemark = async () => {
     const text = remarkText.trim()
-    if (!text) {
-      toast({ title: 'Please enter remark', status: 'warning' })
-      return
-    }
-    if (text.length > 500) {
-      toast({ title: 'Remark too long', description: 'Max 500 characters.', status: 'warning' })
-      return
-    }
-    if (!canEdit) {
-      toast({ title: 'Access denied', status: 'warning' })
-      return
-    }
+    if (!text) return toast({ title: 'Please enter comment', status: 'warning' })
+    if (text.length > 500) return toast({ title: 'Comment too long', description: 'Max 500 characters.', status: 'warning' })
+    if (!canEdit) return toast({ title: 'Access denied', status: 'warning' })
 
     const now = new Date().toISOString()
-    const item: RemarksItem = {
-      id: cryptoId(),
-      text,
-      createdAt: now,
-      createdBy: currentUserLabel || undefined,
-    }
-
+    const item: RemarksItem = { id: cryptoId(), text, createdAt: now, createdBy: currentUserLabel || undefined }
     const next = [item, ...remarks].filter((x) => !x.isDeleted)
+
     const ok = await saveRemarksArray(next)
     if (ok) {
       setRemarkText('')
-      toast({ title: 'Remark added', status: 'success' })
+      toast({ title: 'Comment added', status: 'success' })
     }
   }
 
-  // ✅ start edit comment
   const startEditRemark = (it: RemarksItem) => {
     if (!canEdit) return
     setEditingRemarkId(it.id)
@@ -329,71 +310,69 @@ export default function DoctorProfilePage() {
     setEditRemarkText('')
   }
 
-  // ✅ update existing comment
   const updateRemark = async () => {
     const idToEdit = editingRemarkId
     if (!idToEdit) return
 
     const text = editRemarkText.trim()
-    if (!text) {
-      toast({ title: 'Please enter remark', status: 'warning' })
-      return
-    }
-    if (text.length > 500) {
-      toast({ title: 'Remark too long', description: 'Max 500 characters.', status: 'warning' })
-      return
-    }
+    if (!text) return toast({ title: 'Please enter comment', status: 'warning' })
+    if (text.length > 500) return toast({ title: 'Comment too long', description: 'Max 500 characters.', status: 'warning' })
 
     const now = new Date().toISOString()
-    const next = remarks.map((r) => {
-      if (r.id !== idToEdit) return r
-      return { ...r, text, updatedAt: now }
-    })
+    const next = remarks.map((r) =>
+      r.id !== idToEdit ? r : { ...r, text, updatedAt: now, updatedBy: currentUserLabel || r.updatedBy },
+    )
 
     const ok = await saveRemarksArray(next)
     if (ok) {
-      toast({ title: 'Remark updated', status: 'success' })
+      toast({ title: 'Comment updated', status: 'success' })
       cancelEditRemark()
     }
   }
 
-  // ✅ delete (soft delete)
   const deleteRemark = async (rid: string) => {
     if (!canEdit) return
-    const next = remarks.map((r) => (r.id === rid ? { ...r, isDeleted: true, updatedAt: new Date().toISOString() } : r))
+    const now = new Date().toISOString()
+    const next = remarks.map((r) =>
+      r.id === rid ? { ...r, isDeleted: true, updatedAt: now, updatedBy: currentUserLabel || r.updatedBy } : r,
+    )
     const ok = await saveRemarksArray(next)
-    if (ok) toast({ title: 'Remark removed', status: 'success' })
+    if (ok) toast({ title: 'Comment removed', status: 'success' })
   }
 
-  // ✅ OPEN ENRICH FURTHER MODAL (financial)
   const openUpdate = () => {
     if (!canEdit) return
     const d = doctor
     if (!d) return
 
+    setUpdateTab('basic')
     setForm({
-      monthlyGrossIncome: d.monthlyGrossIncome ?? '',
-      monthlyNetIncome: d.monthlyNetIncome ?? '',
-      otherIncomeSources: d.otherIncomeSources ?? '',
-
-      monthlyEmi: d.monthlyEmi ?? '',
-      activeLoans: d.activeLoans ?? '',
-
+      fullName: d.fullName ?? '',
+      mobileNumber: d.mobileNumber ?? '',
+      email: d.email ?? '',
+      registrationNumber: d.registrationNumber ?? '',
+      panNumber: d.panNumber ?? '',
+      aadharNumber: d.aadharNumber ?? '',
+      cityOrPinCode: d.cityOrPinCode ?? '',
+      yearsOfPractice: d.yearsOfPractice ?? null,
+      qualification: Array.isArray(d.qualification) ? d.qualification : [],
+      practiceType: Array.isArray(d.practiceType) ? d.practiceType : [],
+      _qualificationDraft: '',
+      _practiceTypeDraft: '',
+      monthlyGrossIncome: d.monthlyGrossIncome ?? 0,
+      monthlyNetIncome: d.monthlyNetIncome ?? 0,
+      otherIncomeSources: d.otherIncomeSources ?? 0,
+      monthlyEmi: d.monthlyEmi ?? 0,
+      activeLoans: d.activeLoans ?? 0,
       loanType: normalizeLoanType(d.loanType),
       _loanTypeDraft: '',
-
       hasOverdue: Boolean(d.hasOverdue),
-
+      hasProperty: Boolean(d.hasProperty),
+      propertyValue: d.propertyValue ?? 0,
+      medicalEquipmentValue: d.medicalEquipmentValue ?? 0,
       cibilScore: d.cibilScore ?? null,
-
-      hasProperty: Boolean((d as any).hasProperty),
-      propertyValue: (d as any).propertyValue ?? '',
-      medicalEquipmentValue: (d as any).medicalEquipmentValue ?? '',
-
-      consent: Boolean(d.consent),
     })
 
-    setUpdateTab('income')
     setIsUpdateOpen(true)
   }
 
@@ -402,12 +381,8 @@ export default function DoctorProfilePage() {
     setIsUpdateOpen(false)
   }
 
-  // ✅ SAVE ENRICH UPDATE (PATCH)
   const saveUpdate = async () => {
-    if (!canEdit) {
-      toast({ title: 'Access denied', description: 'You cannot update details.', status: 'warning' })
-      return
-    }
+    if (!canEdit) return toast({ title: 'Access denied', status: 'warning' })
 
     const token = getToken()
     if (!token) {
@@ -417,38 +392,35 @@ export default function DoctorProfilePage() {
     }
 
     const payload: any = {}
+    if (form.fullName !== undefined) payload.fullName = String(form.fullName ?? '').trim()
+    if (form.mobileNumber !== undefined) payload.mobileNumber = String(form.mobileNumber ?? '').trim()
+    if (form.email !== undefined) payload.email = String(form.email ?? '').trim().toLowerCase()
+    if (form.registrationNumber !== undefined) payload.registrationNumber = String(form.registrationNumber ?? '').trim()
+    if (form.panNumber !== undefined) payload.panNumber = String(form.panNumber ?? '').trim().toUpperCase()
+    if (form.aadharNumber !== undefined) payload.aadharNumber = String(form.aadharNumber ?? '').trim()
+    if (form.cityOrPinCode !== undefined) payload.cityOrPinCode = String(form.cityOrPinCode ?? '').trim()
+    if (form.yearsOfPractice !== undefined) payload.yearsOfPractice = toNumOrNull(form.yearsOfPractice)
 
-    if (form.consent !== undefined) payload.consent = Boolean(form.consent)
+    if (form.qualification !== undefined) payload.qualification = normalizeStringArray(form.qualification)
+    if (form.practiceType !== undefined) payload.practiceType = normalizeStringArray(form.practiceType)
+    if (form.monthlyGrossIncome !== undefined) payload.monthlyGrossIncome = toNumOrZero(form.monthlyGrossIncome)
+    if (form.monthlyNetIncome !== undefined) payload.monthlyNetIncome = toNumOrZero(form.monthlyNetIncome)
+    if (form.otherIncomeSources !== undefined) payload.otherIncomeSources = toNumOrZero(form.otherIncomeSources)
+    if (form.monthlyEmi !== undefined) payload.monthlyEmi = toNumOrZero(form.monthlyEmi)
+    if (form.activeLoans !== undefined) payload.activeLoans = toNumOrZero(form.activeLoans)
+    if (form.loanType !== undefined) payload.loanType = normalizeLoanType(form.loanType)
     if (form.hasOverdue !== undefined) payload.hasOverdue = Boolean(form.hasOverdue)
     if (form.hasProperty !== undefined) payload.hasProperty = Boolean(form.hasProperty)
-
-    if (form.monthlyGrossIncome !== undefined && form.monthlyGrossIncome !== '') payload.monthlyGrossIncome = toNumOrZero(form.monthlyGrossIncome)
-    if (form.monthlyNetIncome !== undefined && form.monthlyNetIncome !== '') payload.monthlyNetIncome = toNumOrZero(form.monthlyNetIncome)
-    if (form.otherIncomeSources !== undefined && form.otherIncomeSources !== '') payload.otherIncomeSources = toNumOrZero(form.otherIncomeSources)
-
-    if (form.monthlyEmi !== undefined && form.monthlyEmi !== '') payload.monthlyEmi = toNumOrZero(form.monthlyEmi)
-    if (form.activeLoans !== undefined && form.activeLoans !== '') payload.activeLoans = toNumOrZero(form.activeLoans)
-
-    if (form.propertyValue !== undefined && form.propertyValue !== '') payload.propertyValue = toNumOrZero(form.propertyValue)
-    if (form.medicalEquipmentValue !== undefined && form.medicalEquipmentValue !== '') payload.medicalEquipmentValue = toNumOrZero(form.medicalEquipmentValue)
-
+    if (form.propertyValue !== undefined) payload.propertyValue = toNumOrZero(form.propertyValue)
+    if (form.medicalEquipmentValue !== undefined) payload.medicalEquipmentValue = toNumOrZero(form.medicalEquipmentValue)
     if (form.cibilScore === null) payload.cibilScore = null
-    if (form.cibilScore !== undefined && form.cibilScore !== null && form.cibilScore !== '') {
-      payload.cibilScore = toNumOrNull(form.cibilScore)
-    }
-
-    if (form.loanType !== undefined) {
-      payload.loanType = normalizeLoanType(form.loanType)
-    }
+    if (form.cibilScore !== undefined && form.cibilScore !== null) payload.cibilScore = toNumOrNull(form.cibilScore)
 
     setSavingUpdate(true)
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       })
 
@@ -464,7 +436,7 @@ export default function DoctorProfilePage() {
 
       toast({ title: 'Profile updated', status: 'success' })
       setIsUpdateOpen(false)
-      setDoctor(data)
+      await fetchDoctor()
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {
@@ -472,119 +444,81 @@ export default function DoctorProfilePage() {
     }
   }
 
-  // ✅ OPEN PENCIL BASIC PROFILE MODAL
-  const openProfileEdit = () => {
-    if (!canEdit) return
-    const d = doctor
-    if (!d) return
+  const onShareProfile = async () => {
+    if (typeof window === 'undefined') return
 
-    setProfileForm({
-      fullName: d.fullName ?? '',
-      registrationNumber: d.registrationNumber ?? '',
-      mobileNumber: d.mobileNumber ?? '',
-      email: d.email ?? '',
-      cityOrPinCode: d.cityOrPinCode ?? '',
-      yearsOfPractice: d.yearsOfPractice ?? null,
-      qualification: Array.isArray(d.qualification) ? d.qualification : [],
-      practiceType: Array.isArray(d.practiceType) ? d.practiceType : [],
-      _qualificationDraft: '',
-      _practiceTypeDraft: '',
-    })
+    const doctorId = doctor?._id || id
+    const url = `${window.location.origin}/doctor-lead/${doctorId}`
+    const shareText = `Doctor Profile: ${doctor?.fullName || 'N/A'}\nMobile: ${doctor?.mobileNumber || 'N/A'}\nLink: ${url}`
 
-    setIsProfileEditOpen(true)
-  }
-
-  const closeProfileEdit = () => {
-    if (savingProfileEdit) return
-    setIsProfileEditOpen(false)
-  }
-
-  // ✅ SAVE PENCIL BASIC PROFILE (PATCH)
-  const saveProfileEdit = async () => {
-    if (!canEdit) {
-      toast({ title: 'Access denied', status: 'warning' })
-      return
-    }
-
-    const token = getToken()
-    if (!token) {
-      toast({ title: 'Please login first', status: 'info' })
-      router.push('/login')
-      return
-    }
-
-    const payload: any = {
-      fullName: String(profileForm.fullName ?? '').trim(),
-      registrationNumber: String(profileForm.registrationNumber ?? '').trim(),
-      mobileNumber: String(profileForm.mobileNumber ?? '').trim(),
-      email: String(profileForm.email ?? '').trim(),
-      cityOrPinCode: String(profileForm.cityOrPinCode ?? '').trim(),
-      yearsOfPractice: profileForm.yearsOfPractice === '' ? null : (profileForm.yearsOfPractice ?? null),
-
-      qualification: Array.isArray(profileForm.qualification)
-        ? profileForm.qualification.map((x) => String(x).trim()).filter(Boolean)
-        : [],
-
-      practiceType: Array.isArray(profileForm.practiceType)
-        ? profileForm.practiceType.map((x) => String(x).trim()).filter(Boolean)
-        : [],
-    }
-
-    setSavingProfileEdit(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: 'Update failed',
-          description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
-          status: 'error',
-        })
+      if ((navigator as any).share) {
+        await (navigator as any).share({ title: 'Doctor Profile', text: shareText, url })
+        toast({ title: 'Shared successfully', status: 'success' })
         return
       }
-
-      toast({ title: 'Basic profile updated', status: 'success' })
-      setDoctor(data)
-      setIsProfileEditOpen(false)
     } catch {
-      toast({ title: 'Server error', status: 'error' })
-    } finally {
-      setSavingProfileEdit(false)
+
+    }
+
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({ title: 'Link copied', description: 'Profile link copied to clipboard', status: 'success' })
+    } catch {
+      toast({ title: 'Copy failed', description: url, status: 'info' })
     }
   }
 
+  const copyProfileLink = async () => {
+    if (typeof window === 'undefined') return
+    const doctorId = doctor?._id || id
+    const url = `${window.location.origin}/doctor-lead/${doctorId}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({ title: 'Link copied', status: 'success' })
+    } catch {
+      toast({ title: 'Copy failed', description: url, status: 'info' })
+    }
+  }
+
+  const regCheck = validateRegistrationNumber(doctor?.registrationNumber)
+  const uiVerified = Boolean(doctor?.isVerified) && regCheck.ok
+  const verifiedLabel = uiVerified ? 'Verified' : regCheck.status === 'INVALID_FORMAT' ? 'Invalid Reg No' : 'Not Verified'
+  const verifiedColor = uiVerified ? 'green' : regCheck.status === 'INVALID_FORMAT' ? 'red' : 'yellow'
+
   const profileCompletion = doctor ? calcProfileCompletion(doctor) : 0
-  const riskBucket = profileCompletion >= 70 ? 'Low' : profileCompletion >= 40 ? 'Medium' : 'High'
+  const riskBucket = profileCompletion >= 60 ? 'Low' : profileCompletion >= 50 ? 'Medium' : 'High'
   const riskColor = riskBucket === 'Low' ? 'green' : riskBucket === 'Medium' ? 'yellow' : 'red'
+  const FOIR = riskBucket === 'Low' ? 0.6 : riskBucket === 'Medium' ? 0.5 : 0.4
+
+  const income = Number(doctor?.monthlyNetIncome ?? doctor?.monthlyGrossIncome ?? 0) || 0
+  const existingEmi = Number(doctor?.monthlyEmi ?? 0) || 0
+  const eligibleEmi = income > 0 ? Math.max(0, income * FOIR - existingEmi) : 0
+
+  const DEFAULT_RATE = 18
+  const DEFAULT_TENURE = 36
+  const maxLoanAmount = eligibleEmi > 0 ? pvFromEmi(eligibleEmi, DEFAULT_RATE, DEFAULT_TENURE) : 0
 
   const loanTypeText = normalizeLoanType(doctor?.loanType).join(', ')
-
   const visibleRemarks = (remarks || []).filter((r) => !r.isDeleted)
 
   return (
     <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
-      <Container maxW="container.xl">
-        {/* Top Doctor Card */}
-        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
+      <Container maxW="7xl">
+        <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={{ base: 4, md: 6 }}>
           <HStack justify="space-between" align="start" spacing={6} flexWrap="wrap">
-            <HStack spacing={4} minW="260px">
+            <HStack spacing={4} align="center">
               <Avatar size="lg" name={doctor?.fullName || 'Doctor'} />
               <Box>
                 <Skeleton isLoaded={!loading}>
-                  <HStack spacing={2} align="center">
+                  <HStack spacing={2} flexWrap="wrap" align="center">
                     <Heading size="md">{doctor?.fullName || '—'}</Heading>
 
+                    <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
+
                     {canEdit ? (
-                      <Tooltip label="Edit basic profile" hasArrow>
-                        <IconButton aria-label="Edit basic profile" icon={<EditIcon />} size="sm" variant="ghost" onClick={openProfileEdit} />
+                      <Tooltip label="Edit / Update profile" hasArrow>
+                        <IconButton aria-label="Edit / Update profile" icon={<EditIcon />} size="sm" variant="ghost" onClick={openUpdate} />
                       </Tooltip>
                     ) : null}
                   </HStack>
@@ -602,366 +536,362 @@ export default function DoctorProfilePage() {
               </Box>
             </HStack>
 
-            <HStack spacing={8} align="start">
+            <HStack spacing={6} align="start" justify="flex-end" flexWrap="wrap">
               <Box textAlign="right">
                 <Text fontSize="xs" color="gray.500">
                   Mobile
                 </Text>
                 <Skeleton isLoaded={!loading}>
-                  <Text fontWeight="700">{doctor?.mobileNumber || '—'}</Text>
+                  <Text fontWeight="800">{doctor?.mobileNumber || '—'}</Text>
                 </Skeleton>
               </Box>
+
               <Box textAlign="right">
                 <Text fontSize="xs" color="gray.500">
                   Reg No
                 </Text>
                 <Skeleton isLoaded={!loading}>
-                  <Text fontWeight="700">{doctor?.registrationNumber || 'N/A'}</Text>
+                  <Text fontWeight="800">{doctor?.registrationNumber || 'N/A'}</Text>
                 </Skeleton>
               </Box>
+
+              <Menu placement="bottom-end">
+                <Tooltip label="Share options" hasArrow>
+                  <MenuButton
+                    as={IconButton}
+                    aria-label="Share"
+                    icon={<Text fontSize="lg">⋮</Text>}
+                    variant="ghost"
+                    borderRadius="xl"
+                  />
+                </Tooltip>
+                <MenuList borderRadius="xl" p={2}>
+                  <MenuItem icon={<ExternalLinkIcon />} borderRadius="lg" onClick={onShareProfile}>
+                    Share Profile
+                  </MenuItem>
+                  <MenuItem icon={<CopyIcon />} borderRadius="lg" onClick={copyProfileLink}>
+                    Copy Link
+                  </MenuItem>
+                </MenuList>
+              </Menu>
             </HStack>
           </HStack>
-        </Box>
 
-        {/* KPI Cards */}
-        <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={5} mt={6}>
-          <GridItem>
-            <CardBox title="Profile Completion" right={<Text fontWeight="800" fontSize="2xl">{profileCompletion}%</Text>}>
-              <Text fontSize="sm" color="gray.600">
-                Credit Ready
-              </Text>
-              <Progress mt={3} value={profileCompletion} borderRadius="full" />
+          <Divider my={5} borderColor="gray.100" />
 
-              {canEdit ? (
-                <Button mt={4} w="100%" size="sm" variant="outline" borderRadius="lg" onClick={openUpdate}>
-                  Enrich Further
-                </Button>
-              ) : null}
-            </CardBox>
-          </GridItem>
-
-          <GridItem>
-            <CardBox
-              title="Risk Bucket"
-              right={
-                <Badge colorScheme={riskColor} borderRadius="full" px={3} py={1}>
-                  {riskBucket}
-                </Badge>
-              }
-            >
-              <Text fontSize="sm" color="gray.600">
-                Review Required
-              </Text>
-              <Text mt={3} fontSize="sm" color="gray.500">
-                Based on captured data signals & missing fields.
-              </Text>
-            </CardBox>
-          </GridItem>
-
-          <GridItem>
-            <CardBox title="EMI Eligibility" right={<Text fontWeight="800" fontSize="xl">₹ Calculating...</Text>}>
-              <Text fontSize="sm" color="gray.600">
-                Max Loan Amount
-              </Text>
-              <Text mt={3} fontSize="sm" color="gray.500">
-                Will be computed after income/statement enrichment.
-              </Text>
-            </CardBox>
-          </GridItem>
-        </Grid>
-
-        {/* Bottom Sections */}
-        <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={5} mt={6}>
-          {/* Financial Brain Insights */}
-          <GridItem>
-            <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
-              <HStack justify="space-between" mb={3}>
-                <Box>
-                  <Heading size="sm">Financial Brain Insights</Heading>
-                  <Text fontSize="sm" color="gray.500">
-                    Already captured and matched data points
-                  </Text>
-                </Box>
-                <Badge colorScheme="blue" borderRadius="full" px={3} py={1}>
-                  Verified Data
-                </Badge>
-              </HStack>
-
-              <HStack bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p="6px" spacing={2}>
-                <BrainTabButton active={brainTab === 'insights'} onClick={() => setBrainTab('insights')}>
-                  Insights
-                </BrainTabButton>
-                <BrainTabButton active={brainTab === 'captured'} onClick={() => setBrainTab('captured')}>
-                  Captured
-                </BrainTabButton>
-                <BrainTabButton active={brainTab === 'extra'} onClick={() => setBrainTab('extra')}>
-                  Extra Details
-                </BrainTabButton>
-              </HStack>
-
-              <Divider borderColor="gray.100" my={4} />
-
-              {brainTab === 'insights' ? (
-                <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
-                  <Box bg="green.50" border="1px solid" borderColor="green.100" borderRadius="xl" p={4}>
-                    <Text fontWeight="800" color="green.700">
-                      Captured Signals
-                    </Text>
-                    <Stack spacing={1.5} mt={3} fontSize="sm" color="green.800">
-                      <Text>• KYC Verified via Reg No</Text>
-                      <Text>• Location: {doctor?.cityOrPinCode || '—'}</Text>
-                      <Text>• Practice: {doctor?.yearsOfPractice ? `${doctor.yearsOfPractice}+ Years Exp.` : '—'}</Text>
-                      <Text>• Overdue: {doctor?.hasOverdue ? 'Yes' : 'No'}</Text>
-                    </Stack>
-                  </Box>
-
-                  <Box bg="blue.50" border="1px solid" borderColor="blue.100" borderRadius="xl" p={4}>
-                    <Text fontWeight="800" color="blue.700">
-                      Product Matches
-                    </Text>
-                    <Stack spacing={1.5} mt={3} fontSize="sm" color="blue.800">
-                      <Text>• Professional Practice Loan</Text>
-                      <Text>• Medical Equipment Finance</Text>
-                      <Text>• Working Capital</Text>
-                    </Stack>
-                  </Box>
-                </Grid>
-              ) : brainTab === 'captured' ? (
-                <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden" bg="white">
-                  <HStack bg="gray.50" px={5} py={3} borderBottom="1px solid" borderBottomColor="gray.200">
-                    <Text fontSize="sm" fontWeight="800" color="gray.700">
-                      Captured
-                    </Text>
-                  </HStack>
-
-                  <CapturedRow label="Qualification" value={valueOrDash((doctor?.qualification || []).join(', '))} />
-                  <CapturedRow label="Monthly Income" value={formatINR(doctor?.monthlyNetIncome ?? doctor?.monthlyGrossIncome ?? null)} />
-                  <CapturedRow
-                    label="Yearly Income"
-                    value={
-                      doctor?.monthlyNetIncome
-                        ? formatINR(doctor.monthlyNetIncome * 12)
-                        : doctor?.monthlyGrossIncome
-                        ? formatINR(doctor.monthlyGrossIncome * 12)
-                        : '₹N/A'
-                    }
-                    valueColor={doctor?.monthlyNetIncome || doctor?.monthlyGrossIncome ? 'gray.800' : 'gray.500'}
-                  />
-                  <CapturedRow
-                    label="CIBIL Score"
-                    value={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? String(doctor.cibilScore) : 'Pending'}
-                    valueColor={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? 'gray.800' : 'red.500'}
-                  />
-                  <CapturedRow label="Location" value={valueOrDash(doctor?.cityOrPinCode)} />
-                  <CapturedRow label="Monthly EMI" value={formatINR(doctor?.monthlyEmi ?? null)} />
-                  <CapturedRow
-                    label="Active Loans"
-                    value={doctor?.activeLoans !== undefined && doctor?.activeLoans !== null ? String(doctor.activeLoans) : '—'}
-                    valueColor={doctor?.activeLoans !== undefined && doctor?.activeLoans !== null ? 'gray.800' : 'gray.500'}
-                  />
-                  <CapturedRow label="Loan Type(s)" value={valueOrDash(loanTypeText)} />
-                  <CapturedRow
-                    label="Overdue"
-                    value={doctor?.hasOverdue ? 'Yes' : 'No'}
-                    valueColor={doctor?.hasOverdue ? 'red.500' : 'green.600'}
-                    hideDivider
-                  />
-                </Box>
-              ) : (
-                <Box border="1px solid" borderColor="gray.200" borderRadius="xl" p={4}>
-                  <Heading size="xs" color="gray.700">
-                    Income & Cash Flow
-                  </Heading>
-                  <Divider my={3} borderColor="gray.100" />
-                  <KeyValueRow label="Monthly Gross Income" value={formatINR(doctor?.monthlyGrossIncome ?? null)} />
-                  <KeyValueRow label="Monthly Net Income" value={formatINR(doctor?.monthlyNetIncome ?? null)} />
-                  <KeyValueRow label="Other Income Sources" value={formatINR(doctor?.otherIncomeSources ?? null)} />
-
-                  <Divider my={4} borderColor="gray.100" />
-
-                  <Heading size="xs" color="gray.700">
-                    Obligations
-                  </Heading>
-                  <Divider my={3} borderColor="gray.100" />
-                  <KeyValueRow label="Monthly EMI" value={formatINR(doctor?.monthlyEmi ?? null)} />
-                  <KeyValueRow label="Active Loans" value={doctor?.activeLoans !== undefined ? String(doctor.activeLoans) : '—'} />
-                  <KeyValueRow label="Loan Type(s)" value={valueOrDash(loanTypeText)} />
-                  <KeyValueRow label="Has Overdue" value={doctor?.hasOverdue ? 'Yes' : 'No'} />
-
-                  <Divider my={4} borderColor="gray.100" />
-
-                  <Heading size="xs" color="gray.700">
-                    Credit
-                  </Heading>
-                  <Divider my={3} borderColor="gray.100" />
-                  <KeyValueRow label="CIBIL Score" value={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? String(doctor.cibilScore) : 'Pending'} />
-                </Box>
-              )}
-            </Box>
-          </GridItem>
-
-          {/* ✅ Interaction Log (Comment style with time + multiple + edit/delete) */}
-          <GridItem>
-            <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
-              <HStack justify="space-between" mb={2}>
-                <Box>
-                  <Heading size="sm">Interaction Log</Heading>
-                  <Text fontSize="sm" color="gray.500">
-                    Comments with time & history
-                  </Text>
-                </Box>
-              </HStack>
-
-              <Divider borderColor="gray.100" my={4} />
-
-              {/* Add new comment */}
+          <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 5 }}>
+            <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
               <Box>
-                <Textarea
-                  value={remarkText}
-                  onChange={(e) => setRemarkText(e.target.value)}
-                  placeholder="Write a comment..."
-                  rows={3}
-                  borderRadius="xl"
-                />
-                <HStack justify="space-between" mt={2}>
-                  <Text fontSize="xs" color="gray.500">
-                    {remarkText.trim().length}/500
+                <HStack spacing={2} mb={1} flexWrap="wrap">
+                  <Text fontSize="sm" color="gray.600" fontWeight="800">
+                    Profile Completion
                   </Text>
-                  <Button
-                    size="sm"
-                    colorScheme="blue"
-                    onClick={addRemark}
-                    isLoading={savingRemark}
-                    loadingText="Saving..."
-                    borderRadius="lg"
-                    isDisabled={!canEdit}
-                  >
-                    Add Comment
-                  </Button>
+                  <Badge colorScheme={riskColor} borderRadius="full" px={3} py={1}>
+                    {riskBucket} Risk
+                  </Badge>
                 </HStack>
+
+                <Text fontSize="2xl" fontWeight="900" color="gray.800" lineHeight="1">
+                  {profileCompletion}%
+                </Text>
+
+                <Text fontSize="sm" color="gray.500" mt={1}>
+                  Complete profile for better eligibility & matching
+                </Text>
               </Box>
 
-              <Divider borderColor="gray.100" my={4} />
+              <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
+            </HStack>
 
-              {loading ? (
-                <Stack spacing={3}>
-                  <Skeleton height="14px" />
-                  <Skeleton height="14px" />
-                  <Skeleton height="14px" />
-                </Stack>
-              ) : visibleRemarks.length ? (
-                <Stack spacing={3}>
-                  {visibleRemarks.map((it) => {
-                    const isEditing = editingRemarkId === it.id
-                    const by = it.createdBy || 'User'
-                    const time = formatDateTime(it.updatedAt || it.createdAt)
+            <HStack mt={4} spacing={1}>
+              {Array.from({ length: 10 }).map((_, i) => {
+                const filled = Math.round((profileCompletion / 100) * 10)
+                const isOn = i < filled
+                return (
+                  <Box
+                    key={i}
+                    h="10px"
+                    flex="1"
+                    borderRadius="full"
+                    bg={isOn ? 'blue.500' : 'gray.200'}
+                    opacity={isOn ? 1 : 0.7}
+                  />
+                )
+              })}
+            </HStack>
 
-                    return (
-                      <Box key={it.id} bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p={4}>
-                        <HStack justify="space-between" align="start">
-                          <HStack spacing={3} align="start">
-                            <Avatar size="sm" name={by} />
-                            <Box>
-                              <HStack spacing={2} align="center" flexWrap="wrap">
-                                <Text fontSize="sm" fontWeight="800" color="gray.800">
-                                  {by}
-                                </Text>
-                                <Text fontSize="xs" color="gray.500">
-                                  • {time}
-                                </Text>
-                                {it.updatedAt ? (
+            <Progress mt={3} value={profileCompletion} borderRadius="full" size="sm" />
+          </Box>
+        </Box>
+
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5} mt={6}>
+          <KpiCard
+            title="Risk Bucket"
+            value={riskBucket}
+            helper={`FOIR: ${Math.round(FOIR * 100)}% based on risk`}
+            badge={{ label: riskBucket, colorScheme: riskColor }}
+          />
+          <KpiCard
+            title="Eligible EMI (Est.)"
+            value={income > 0 ? formatINR(Math.round(eligibleEmi)) : '₹N/A'}
+            helper={income > 0 ? `Income × FOIR (${Math.round(FOIR * 100)}%) - Existing EMI` : 'Add income to compute'}
+          />
+          <KpiCard
+            title="Max Loan Amount (Est.)"
+            value={income > 0 && eligibleEmi > 0 ? formatINR(Math.round(maxLoanAmount)) : '₹N/A'}
+            helper={income > 0 && eligibleEmi > 0 ? `@ ${DEFAULT_RATE}% for ${DEFAULT_TENURE} months` : 'Add income & EMI to compute'}
+          />
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={5} mt={6}>
+          <Box
+            gridColumn={{ base: 'auto', lg: 'span 2' }}
+            bg="white"
+            border="1px solid"
+            borderColor="gray.200"
+            borderRadius="2xl"
+            boxShadow="sm"
+            p={{ base: 4, md: 6 }}
+          >
+            <HStack justify="space-between" mb={2}>
+              <Box>
+                <Heading size="sm">Financial Brain Insights</Heading>
+                <Text fontSize="sm" color="gray.500">
+                  Already captured and matched data points
+                </Text>
+              </Box>
+              <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
+            </HStack>
+
+            <Divider my={4} borderColor="gray.100" />
+
+            <Tabs variant="soft-rounded" colorScheme="blue">
+              <TabList flexWrap="wrap" gap={2}>
+                <Tab>Basic</Tab>
+                <Tab>Income</Tab>
+                <Tab>Obligations</Tab>
+                <Tab>Assets</Tab>
+                <Tab>Credit</Tab>
+              </TabList>
+
+              <TabPanels mt={4}>
+                <TabPanel px={0}>
+                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                    <CapturedRow label="Full Name" value={valueOrDash(doctor?.fullName)} />
+                    <CapturedRow label="Mobile" value={valueOrDash(doctor?.mobileNumber)} />
+                    <CapturedRow label="Email" value={valueOrDash(doctor?.email)} />
+                    <CapturedRow label="City / Pin" value={valueOrDash(doctor?.cityOrPinCode)} />
+                    <CapturedRow label="Registration No" value={valueOrDash(doctor?.registrationNumber)} />
+                    <CapturedRow label="PAN" value={valueOrDash(doctor?.panNumber)} />
+                    <CapturedRow label="Aadhar" value={valueOrDash(doctor?.aadharNumber)} />
+                    <CapturedRow
+                      label="Years of Practice"
+                      value={doctor?.yearsOfPractice != null ? String(doctor.yearsOfPractice) : '—'}
+                    />
+                    <CapturedRow label="Qualification" value={valueOrDash((doctor?.qualification || []).join(', '))} />
+                    <CapturedRow label="Practice Type" value={valueOrDash((doctor?.practiceType || []).join(', '))} hideDivider />
+                  </Box>
+                </TabPanel>
+
+                <TabPanel px={0}>
+                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                    <CapturedRow label="Monthly Gross Income" value={formatINR(doctor?.monthlyGrossIncome ?? null)} />
+                    <CapturedRow label="Monthly Net Income" value={formatINR(doctor?.monthlyNetIncome ?? null)} />
+                    <CapturedRow label="Other Income Sources" value={formatINR(doctor?.otherIncomeSources ?? null)} hideDivider />
+                  </Box>
+                </TabPanel>
+
+                <TabPanel px={0}>
+                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                    <CapturedRow label="Monthly EMI" value={formatINR(doctor?.monthlyEmi ?? null)} />
+                    <CapturedRow label="Active Loans" value={doctor?.activeLoans != null ? String(doctor.activeLoans) : '—'} />
+                    <CapturedRow label="Loan Type(s)" value={valueOrDash(loanTypeText)} />
+                    <CapturedRow
+                      label="Has Overdue"
+                      value={doctor?.hasOverdue ? 'Yes' : 'No'}
+                      valueColor={doctor?.hasOverdue ? 'red.500' : 'green.600'}
+                      hideDivider
+                    />
+                  </Box>
+                </TabPanel>
+
+                <TabPanel px={0}>
+                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                    <CapturedRow label="Has Property" value={doctor?.hasProperty ? 'Yes' : 'No'} />
+                    <CapturedRow label="Property Value" value={formatINR(doctor?.propertyValue ?? null)} />
+                    <CapturedRow label="Medical Equipment Value" value={formatINR(doctor?.medicalEquipmentValue ?? null)} hideDivider />
+                  </Box>
+                </TabPanel>
+
+                <TabPanel px={0}>
+                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                    <CapturedRow
+                      label="CIBIL Score"
+                      value={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? String(doctor.cibilScore) : 'Pending'}
+                      valueColor={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? 'gray.800' : 'red.500'}
+                      hideDivider
+                    />
+                  </Box>
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </Box>
+
+          <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={{ base: 4, md: 6 }}>
+            <Heading size="sm">Interaction Log</Heading>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Comments with time & history
+            </Text>
+
+            <Divider my={4} borderColor="gray.100" />
+
+            <Box>
+              <Textarea
+                value={remarkText}
+                onChange={(e) => setRemarkText(e.target.value)}
+                placeholder="Write a comment..."
+                rows={3}
+                borderRadius="xl"
+              />
+              <HStack justify="space-between" mt={2}>
+                <Text fontSize="xs" color="gray.500">
+                  {remarkText.trim().length}/500
+                </Text>
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  onClick={addRemark}
+                  isLoading={savingRemark}
+                  loadingText="Saving..."
+                  borderRadius="lg"
+                  isDisabled={!canEdit}
+                >
+                  Add Comment
+                </Button>
+              </HStack>
+            </Box>
+
+            <Divider my={4} borderColor="gray.100" />
+
+            {loading ? (
+              <Stack spacing={3}>
+                <Skeleton height="14px" />
+                <Skeleton height="14px" />
+                <Skeleton height="14px" />
+              </Stack>
+            ) : visibleRemarks.length ? (
+              <Stack spacing={3}>
+                {visibleRemarks.map((it) => {
+                  const isEditing = editingRemarkId === it.id
+                  const by = it.createdBy || 'User'
+                  const time = formatDateTime(it.updatedAt || it.createdAt)
+                  const editedBy = it.updatedBy || it.createdBy
+
+                  return (
+                    <Box key={it.id} bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p={4}>
+                      <HStack justify="space-between" align="start">
+                        <HStack spacing={3} align="start">
+                          <Avatar size="sm" name={by} />
+                          <Box>
+                            <HStack spacing={2} align="center" flexWrap="wrap">
+                              <Text fontSize="sm" fontWeight="800" color="gray.800">
+                                {by}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                • {time}
+                              </Text>
+
+                              {it.updatedAt ? (
+                                <Tooltip label={editedBy ? `Edited by ${editedBy}` : 'Edited'} hasArrow>
                                   <Badge variant="subtle" colorScheme="purple" borderRadius="full">
                                     Edited
                                   </Badge>
-                                ) : null}
-                              </HStack>
-
-                              {!isEditing ? (
-                                <Text mt={2} fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
-                                  {it.text}
-                                </Text>
-                              ) : (
-                                <Box mt={2}>
-                                  <Textarea
-                                    value={editRemarkText}
-                                    onChange={(e) => setEditRemarkText(e.target.value)}
-                                    rows={3}
-                                    borderRadius="xl"
-                                  />
-                                  <HStack justify="space-between" mt={2}>
-                                    <Text fontSize="xs" color="gray.500">
-                                      {editRemarkText.trim().length}/500
-                                    </Text>
-                                    <HStack>
-                                      <Button size="sm" variant="ghost" onClick={cancelEditRemark} borderRadius="lg" isDisabled={savingRemark}>
-                                        Cancel
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        colorScheme="blue"
-                                        onClick={updateRemark}
-                                        isLoading={savingRemark}
-                                        loadingText="Saving..."
-                                        borderRadius="lg"
-                                      >
-                                        Save
-                                      </Button>
-                                    </HStack>
-                                  </HStack>
-                                </Box>
-                              )}
-                            </Box>
-                          </HStack>
-
-                          {canEdit ? (
-                            <HStack spacing={1}>
-                              <Tooltip label="Edit" hasArrow>
-                                <IconButton
-                                  aria-label="Edit comment"
-                                  size="sm"
-                                  variant="ghost"
-                                  icon={<EditIcon />}
-                                  onClick={() => startEditRemark(it)}
-                                  isDisabled={savingRemark || isEditing}
-                                />
-                              </Tooltip>
-                              <Tooltip label="Delete" hasArrow>
-                                <IconButton
-                                  aria-label="Delete comment"
-                                  size="sm"
-                                  variant="ghost"
-                                  icon={<Text fontSize="lg">🗑️</Text>}
-                                  onClick={() => deleteRemark(it.id)}
-                                  isDisabled={savingRemark || isEditing}
-                                />
-                              </Tooltip>
+                                </Tooltip>
+                              ) : null}
                             </HStack>
-                          ) : null}
+
+                            {!isEditing ? (
+                              <Text mt={2} fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
+                                {it.text}
+                              </Text>
+                            ) : (
+                              <Box mt={2}>
+                                <Textarea value={editRemarkText} onChange={(e) => setEditRemarkText(e.target.value)} rows={3} borderRadius="xl" />
+                                <HStack justify="space-between" mt={2}>
+                                  <Text fontSize="xs" color="gray.500">
+                                    {editRemarkText.trim().length}/500
+                                  </Text>
+                                  <HStack>
+                                    <Button size="sm" variant="ghost" onClick={cancelEditRemark} borderRadius="lg" isDisabled={savingRemark}>
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      colorScheme="blue"
+                                      onClick={updateRemark}
+                                      isLoading={savingRemark}
+                                      loadingText="Saving..."
+                                      borderRadius="lg"
+                                    >
+                                      Save
+                                    </Button>
+                                  </HStack>
+                                </HStack>
+                              </Box>
+                            )}
+                          </Box>
                         </HStack>
-                      </Box>
-                    )
-                  })}
-                </Stack>
-              ) : (
-                <Box mt={2} textAlign="center" color="gray.400">
-                  <Text fontSize="sm">No comments yet.</Text>
-                </Box>
-              )}
-            </Box>
-          </GridItem>
-        </Grid>
+
+                        {canEdit ? (
+                          <HStack spacing={1}>
+                            <Tooltip label="Edit" hasArrow>
+                              <IconButton
+                                aria-label="Edit comment"
+                                size="sm"
+                                variant="ghost"
+                                icon={<EditIcon />}
+                                onClick={() => startEditRemark(it)}
+                                isDisabled={savingRemark || isEditing}
+                              />
+                            </Tooltip>
+                            <Tooltip label="Delete" hasArrow>
+                              <IconButton
+                                aria-label="Delete comment"
+                                size="sm"
+                                variant="ghost"
+                                icon={<Text fontSize="lg">🗑️</Text>}
+                                onClick={() => deleteRemark(it.id)}
+                                isDisabled={savingRemark || isEditing}
+                              />
+                            </Tooltip>
+                          </HStack>
+                        ) : null}
+                      </HStack>
+                    </Box>
+                  )
+                })}
+              </Stack>
+            ) : (
+              <Box mt={2} textAlign="center" color="gray.400">
+                <Text fontSize="sm">No comments yet.</Text>
+              </Box>
+            )}
+          </Box>
+        </SimpleGrid>
       </Container>
 
-      {/* ✅ ENRICH FURTHER MODAL (Financial only) */}
       {canEdit ? (
-        <Modal isOpen={isUpdateOpen} onClose={closeUpdate} size="xl" isCentered>
+        <Modal isOpen={isUpdateOpen} onClose={closeUpdate} size="xl" isCentered scrollBehavior="inside">
           <ModalOverlay />
           <ModalContent borderRadius="2xl">
-            <ModalHeader>Enrich Further</ModalHeader>
+            <ModalHeader>Update Doctor Lead</ModalHeader>
             <ModalCloseButton />
 
             <ModalBody>
-              <HStack bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p="6px" spacing={2} mb={4}>
+              <HStack bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p="6px" spacing={2} mb={4} flexWrap="wrap">
+                <SmallTab active={updateTab === 'basic'} onClick={() => setUpdateTab('basic')}>
+                  Basic
+                </SmallTab>
                 <SmallTab active={updateTab === 'income'} onClick={() => setUpdateTab('income')}>
                   Income
                 </SmallTab>
@@ -976,7 +906,131 @@ export default function DoctorProfilePage() {
                 </SmallTab>
               </HStack>
 
-              {updateTab === 'income' ? (
+              {updateTab === 'basic' ? (
+                <Stack spacing={4}>
+                  <FormControl>
+                    <FormLabel>Full Name</FormLabel>
+                    <Input value={form.fullName ?? ''} onChange={(e) => setForm((p) => ({ ...p, fullName: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Mobile</FormLabel>
+                    <Input value={form.mobileNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, mobileNumber: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Email</FormLabel>
+                    <Input value={form.email ?? ''} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>City / Pin</FormLabel>
+                    <Input value={form.cityOrPinCode ?? ''} onChange={(e) => setForm((p) => ({ ...p, cityOrPinCode: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Registration Number</FormLabel>
+                    <Input value={form.registrationNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>PAN</FormLabel>
+                    <Input value={form.panNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, panNumber: e.target.value.toUpperCase() }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Aadhar</FormLabel>
+                    <Input value={form.aadharNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, aadharNumber: e.target.value }))} />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Years of Practice</FormLabel>
+                    <Input
+                      type="number"
+                      value={form.yearsOfPractice ?? ''}
+                      onChange={(e) => setForm((p) => ({ ...p, yearsOfPractice: e.target.value === '' ? null : Number(e.target.value) }))}
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Qualification</FormLabel>
+                    <HStack>
+                      <Input
+                        value={form._qualificationDraft ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, _qualificationDraft: e.target.value }))}
+                        placeholder="Type & Add (e.g., MBBS, MD)"
+                      />
+                      <Button
+                        onClick={() => {
+                          const draft = String(form._qualificationDraft ?? '').trim()
+                          if (!draft) return
+                          setForm((p) => ({
+                            ...p,
+                            qualification: Array.from(new Set([...(p.qualification || []), draft])),
+                            _qualificationDraft: '',
+                          }))
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </HStack>
+
+                    <HStack mt={3} spacing={2} flexWrap="wrap">
+                      {(form.qualification || []).length ? (
+                        (form.qualification || []).map((t) => (
+                          <Tag key={t} borderRadius="full">
+                            <TagLabel>{t}</TagLabel>
+                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, qualification: (p.qualification || []).filter((x) => x !== t) }))} />
+                          </Tag>
+                        ))
+                      ) : (
+                        <Text fontSize="sm" color="gray.500">
+                          No qualification added.
+                        </Text>
+                      )}
+                    </HStack>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Practice Type</FormLabel>
+                    <HStack>
+                      <Input
+                        value={form._practiceTypeDraft ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, _practiceTypeDraft: e.target.value }))}
+                        placeholder="Type & Add (e.g., Clinic, Hospital)"
+                      />
+                      <Button
+                        onClick={() => {
+                          const draft = String(form._practiceTypeDraft ?? '').trim()
+                          if (!draft) return
+                          setForm((p) => ({
+                            ...p,
+                            practiceType: Array.from(new Set([...(p.practiceType || []), draft])),
+                            _practiceTypeDraft: '',
+                          }))
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </HStack>
+
+                    <HStack mt={3} spacing={2} flexWrap="wrap">
+                      {(form.practiceType || []).length ? (
+                        (form.practiceType || []).map((t) => (
+                          <Tag key={t} borderRadius="full">
+                            <TagLabel>{t}</TagLabel>
+                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, practiceType: (p.practiceType || []).filter((x) => x !== t) }))} />
+                          </Tag>
+                        ))
+                      ) : (
+                        <Text fontSize="sm" color="gray.500">
+                          No practice type added.
+                        </Text>
+                      )}
+                    </HStack>
+                  </FormControl>
+                </Stack>
+              ) : updateTab === 'income' ? (
                 <Stack spacing={4}>
                   <FormControl>
                     <FormLabel>Monthly Gross Income</FormLabel>
@@ -1054,14 +1108,7 @@ export default function DoctorProfilePage() {
                         (form.loanType || []).map((t) => (
                           <Tag key={t} borderRadius="full">
                             <TagLabel>{t}</TagLabel>
-                            <TagCloseButton
-                              onClick={() =>
-                                setForm((p) => ({
-                                  ...p,
-                                  loanType: (p.loanType || []).filter((x) => x !== t),
-                                }))
-                              }
-                            />
+                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, loanType: (p.loanType || []).filter((x) => x !== t) }))} />
                           </Tag>
                         ))
                       ) : (
@@ -1098,7 +1145,9 @@ export default function DoctorProfilePage() {
                     <Input
                       type="number"
                       value={form.medicalEquipmentValue ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, medicalEquipmentValue: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, medicalEquipmentValue: e.target.value === '' ? '' : Number(e.target.value) }))
+                      }
                     />
                   </FormControl>
                 </Stack>
@@ -1112,11 +1161,6 @@ export default function DoctorProfilePage() {
                       onChange={(e) => setForm((p) => ({ ...p, cibilScore: e.target.value === '' ? null : Number(e.target.value) }))}
                       placeholder="0 - 900"
                     />
-                  </FormControl>
-
-                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                    <FormLabel mb="0">Consent</FormLabel>
-                    <Switch isChecked={Boolean(form.consent)} onChange={(e) => setForm((p) => ({ ...p, consent: e.target.checked }))} />
                   </FormControl>
                 </Stack>
               )}
@@ -1135,201 +1179,41 @@ export default function DoctorProfilePage() {
           </ModalContent>
         </Modal>
       ) : null}
-
-      {/* ✅ BASIC PROFILE MODAL */}
-      {canEdit ? (
-        <Modal isOpen={isProfileEditOpen} onClose={closeProfileEdit} size="xl" isCentered scrollBehavior="inside">
-          <ModalOverlay />
-          <ModalContent borderRadius="2xl">
-            <ModalHeader>Edit Basic Profile</ModalHeader>
-            <ModalCloseButton />
-
-            <ModalBody>
-              <Stack spacing={4}>
-                <FormControl>
-                  <FormLabel>Full Name</FormLabel>
-                  <Input value={profileForm.fullName ?? ''} onChange={(e) => setProfileForm((p) => ({ ...p, fullName: e.target.value }))} />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Registration Number</FormLabel>
-                  <Input value={profileForm.registrationNumber ?? ''} onChange={(e) => setProfileForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Mobile</FormLabel>
-                  <Input value={profileForm.mobileNumber ?? ''} onChange={(e) => setProfileForm((p) => ({ ...p, mobileNumber: e.target.value }))} />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Email</FormLabel>
-                  <Input value={profileForm.email ?? ''} onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))} />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>City / Pin</FormLabel>
-                  <Input value={profileForm.cityOrPinCode ?? ''} onChange={(e) => setProfileForm((p) => ({ ...p, cityOrPinCode: e.target.value }))} />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Years of Practice</FormLabel>
-                  <Input
-                    type="number"
-                    value={profileForm.yearsOfPractice ?? ''}
-                    onChange={(e) =>
-                      setProfileForm((p) => ({
-                        ...p,
-                        yearsOfPractice: e.target.value === '' ? null : Number(e.target.value),
-                      }))
-                    }
-                  />
-                </FormControl>
-
-                {/* Qualification tags */}
-                <FormControl>
-                  <FormLabel>Qualification</FormLabel>
-
-                  <HStack>
-                    <Input
-                      value={profileForm._qualificationDraft ?? ''}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, _qualificationDraft: e.target.value }))}
-                      placeholder="Type & Add (e.g., BDS, MDS)"
-                    />
-                    <Button
-                      onClick={() => {
-                        const draft = String(profileForm._qualificationDraft ?? '').trim()
-                        if (!draft) return
-                        setProfileForm((p) => ({
-                          ...p,
-                          qualification: Array.from(new Set([...(p.qualification || []), draft])),
-                          _qualificationDraft: '',
-                        }))
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </HStack>
-
-                  <HStack mt={3} spacing={2} flexWrap="wrap">
-                    {(profileForm.qualification || []).length ? (
-                      (profileForm.qualification || []).map((t) => (
-                        <Tag key={t} borderRadius="full">
-                          <TagLabel>{t}</TagLabel>
-                          <TagCloseButton
-                            onClick={() =>
-                              setProfileForm((p) => ({
-                                ...p,
-                                qualification: (p.qualification || []).filter((x) => x !== t),
-                              }))
-                            }
-                          />
-                        </Tag>
-                      ))
-                    ) : (
-                      <Text fontSize="sm" color="gray.500">
-                        No qualification added.
-                      </Text>
-                    )}
-                  </HStack>
-                </FormControl>
-
-                {/* PracticeType tags */}
-                <FormControl>
-                  <FormLabel>Practice Type</FormLabel>
-
-                  <HStack>
-                    <Input
-                      value={profileForm._practiceTypeDraft ?? ''}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, _practiceTypeDraft: e.target.value }))}
-                      placeholder="Type & Add (e.g., Clinic, Hospital)"
-                    />
-                    <Button
-                      onClick={() => {
-                        const draft = String(profileForm._practiceTypeDraft ?? '').trim()
-                        if (!draft) return
-                        setProfileForm((p) => ({
-                          ...p,
-                          practiceType: Array.from(new Set([...(p.practiceType || []), draft])),
-                          _practiceTypeDraft: '',
-                        }))
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </HStack>
-
-                  <HStack mt={3} spacing={2} flexWrap="wrap">
-                    {(profileForm.practiceType || []).length ? (
-                      (profileForm.practiceType || []).map((t) => (
-                        <Tag key={t} borderRadius="full">
-                          <TagLabel>{t}</TagLabel>
-                          <TagCloseButton
-                            onClick={() =>
-                              setProfileForm((p) => ({
-                                ...p,
-                                practiceType: (p.practiceType || []).filter((x) => x !== t),
-                              }))
-                            }
-                          />
-                        </Tag>
-                      ))
-                    ) : (
-                      <Text fontSize="sm" color="gray.500">
-                        No practice type added.
-                      </Text>
-                    )}
-                  </HStack>
-                </FormControl>
-              </Stack>
-            </ModalBody>
-
-            <ModalFooter>
-              <HStack w="100%" justify="space-between">
-                <Button variant="ghost" onClick={closeProfileEdit} isDisabled={savingProfileEdit}>
-                  Cancel
-                </Button>
-                <Button colorScheme="blue" onClick={saveProfileEdit} isLoading={savingProfileEdit} loadingText="Saving...">
-                  Save
-                </Button>
-              </HStack>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      ) : null}
     </Box>
   )
 }
 
-function CardBox({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
+function KpiCard({
+  title,
+  value,
+  helper,
+  badge,
+}: {
+  title: string
+  value: string
+  helper?: string
+  badge?: { label: string; colorScheme: string }
+}) {
   return (
-    <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 6 }} boxShadow="sm">
+    <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={5}>
       <HStack justify="space-between" mb={2}>
-        <Text fontSize="sm" color="gray.500">
+        <Text fontSize="sm" color="gray.500" fontWeight="700">
           {title}
         </Text>
-        {right}
+        {badge ? (
+          <Badge colorScheme={badge.colorScheme} borderRadius="full" px={3} py={1}>
+            {badge.label}
+          </Badge>
+        ) : null}
       </HStack>
-      {children}
-    </Box>
-  )
-}
 
-function BrainTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <Button
-      size="sm"
-      onClick={onClick}
-      borderRadius="xl"
-      variant="ghost"
-      bg={active ? 'white' : 'transparent'}
-      border="1px solid"
-      borderColor={active ? 'gray.200' : 'transparent'}
-      boxShadow={active ? 'sm' : 'none'}
-      fontWeight="700"
-      px="4"
-    >
-      {children}
-    </Button>
+      <Stat>
+        <StatNumber fontSize="2xl" fontWeight="900">
+          {value}
+        </StatNumber>
+        {helper ? <StatHelpText color="gray.500">{helper}</StatHelpText> : null}
+      </Stat>
+    </Box>
   )
 }
 
@@ -1338,15 +1222,12 @@ function SmallTab({ active, onClick, children }: { active: boolean; onClick: () 
     <Button
       size="sm"
       onClick={onClick}
-      borderRadius="xl"
-      variant="ghost"
-      bg={active ? 'white' : 'transparent'}
-      border="1px solid"
-      borderColor={active ? 'gray.200' : 'transparent'}
-      boxShadow={active ? 'sm' : 'none'}
-      fontWeight="700"
-      px="4"
-      flex="1"
+      borderRadius="lg"
+      variant="solid"
+      colorScheme={active ? 'blue' : 'gray'}
+      bg={active ? 'blue.600' : 'transparent'}
+      color={active ? 'white' : 'gray.700'}
+      _hover={{ bg: active ? 'blue.700' : 'gray.100' }}
     >
       {children}
     </Button>
@@ -1373,29 +1254,80 @@ function CapturedRow({
       justify="space-between"
       align="center"
     >
-      <Text fontSize="sm" color="gray.600" fontWeight="500">
+      <Text fontSize="sm" color="gray.600" fontWeight="600">
         {label}
       </Text>
-
-      <Text fontSize="sm" fontWeight="800" color={valueColor || 'gray.800'} textAlign="right" maxW="60%" noOfLines={1}>
+      <Text fontSize="sm" fontWeight="900" color={valueColor || 'gray.800'} textAlign="right" maxW="60%" noOfLines={1}>
         {value}
       </Text>
     </HStack>
   )
 }
 
-function KeyValueRow({ label, value }: { label: string; value: string }) {
+const tickPop = keyframes`
+  0% { transform: scale(0.6) rotate(-8deg); opacity: 0; }
+  55% { transform: scale(1.08) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+`
+const pulseRing = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(49,130,206,0.40); }
+  70% { box-shadow: 0 0 0 10px rgba(49,130,206,0); }
+  100% { box-shadow: 0 0 0 0 rgba(49,130,206,0); }
+`
+
+function VerifiedTickBadge({
+  isVerified,
+  fallbackLabel,
+  fallbackColorScheme,
+}: {
+  isVerified: boolean
+  fallbackLabel: string
+  fallbackColorScheme: string
+}) {
+  if (!isVerified) {
+    return (
+      <Badge colorScheme={fallbackColorScheme} borderRadius="full" px={3} py={1}>
+        {fallbackLabel}
+      </Badge>
+    )
+  }
+
   return (
-    <HStack py={2} justify="space-between">
-      <Text fontSize="sm" color="gray.600">
-        {label}
-      </Text>
-      <Text fontSize="sm" fontWeight="700" color="gray.800">
-        {value}
-      </Text>
-    </HStack>
+    <Box
+      p="1px"
+      borderRadius="full"
+      bgGradient="linear(to-r, blue.400, purple.400, cyan.400)"
+      display="inline-flex"
+      alignItems="center"
+      transition="all 0.18s ease"
+      _hover={{
+        transform: 'translateY(-1px)',
+        filter: 'brightness(1.02)',
+        boxShadow: '0 10px 24px rgba(49,130,206,0.20)',
+      }}
+    >
+      <HStack
+        spacing={2}
+        px={3}
+        py={1}
+        borderRadius="full"
+        bg="white"
+        border="1px solid"
+        borderColor="blue.100"
+        animation={`${pulseRing} 2s infinite`}
+      >
+        <Box animation={`${tickPop} 420ms ease-out`} display="flex" alignItems="center" justifyContent="center">
+          <CheckCircleIcon color="blue.500" boxSize={4} />
+        </Box>
+
+        <Text fontSize="sm" fontWeight="800" color="blue.700" lineHeight="1">
+          Verified
+        </Text>
+      </HStack>
+    </Box>
   )
 }
+
 
 function valueOrDash(v?: string | null) {
   const s = (v ?? '').toString().trim()
@@ -1423,7 +1355,11 @@ function toNumOrNull(v: any) {
   return Number.isFinite(n) ? n : null
 }
 
-// ✅ normalize loanType (supports string or string[])
+function normalizeStringArray(v: any): string[] {
+  if (!Array.isArray(v)) return []
+  return v.map((x) => String(x).trim()).filter(Boolean)
+}
+
 function normalizeLoanType(v: any): string[] {
   if (!v) return []
   if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean)
@@ -1437,27 +1373,31 @@ function calcProfileCompletion(d: DoctorLead) {
     !!d.fullName,
     !!d.mobileNumber,
     !!d.email,
-    !!d.registrationNumber,
     !!d.cityOrPinCode,
+    !!d.registrationNumber,
+    !!d.panNumber,
+    !!d.aadharNumber,
     d.yearsOfPractice !== undefined && d.yearsOfPractice !== null,
     Array.isArray(d.qualification) && d.qualification.length > 0,
     Array.isArray(d.practiceType) && d.practiceType.length > 0,
-    !!d.consent,
     d.monthlyNetIncome !== undefined || d.monthlyGrossIncome !== undefined,
+    d.otherIncomeSources !== undefined,
     d.monthlyEmi !== undefined,
+    d.activeLoans !== undefined,
     loanTypes.length > 0,
+    d.hasOverdue !== undefined,
+    d.hasProperty !== undefined,
+    d.propertyValue !== undefined,
+    d.medicalEquipmentValue !== undefined,
+    d.cibilScore !== undefined,
   ]
   const filled = fields.filter(Boolean).length
   return Math.round((filled / fields.length) * 100)
 }
 
-/** ---------------- Remarks helpers (JSON in remarks string) ---------------- */
-
 function parseRemarks(raw: any): RemarksItem[] {
   const s = String(raw ?? '').trim()
   if (!s) return []
-
-  // ✅ new format: JSON array
   if (s.startsWith('[') && s.endsWith(']')) {
     try {
       const arr = JSON.parse(s)
@@ -1469,29 +1409,18 @@ function parseRemarks(raw: any): RemarksItem[] {
             createdAt: String(x?.createdAt ?? new Date().toISOString()),
             createdBy: x?.createdBy ? String(x.createdBy) : undefined,
             updatedAt: x?.updatedAt ? String(x.updatedAt) : undefined,
+            updatedBy: x?.updatedBy ? String(x.updatedBy) : undefined,
             isDeleted: Boolean(x?.isDeleted),
           }))
           .filter((x) => x.text)
           .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
       }
-    } catch {
-      // fallthrough to old format
-    }
+    } catch {}
   }
-
-  // ✅ old format: single string => convert into 1 comment
-  return [
-    {
-      id: cryptoId(),
-      text: s,
-      createdAt: new Date().toISOString(),
-      createdBy: 'Legacy',
-    },
-  ]
+  return [{ id: cryptoId(), text: s, createdAt: new Date().toISOString(), createdBy: 'Legacy' }]
 }
 
 function cryptoId() {
-  // works in browser; fallback for older envs
   const g: any = globalThis as any
   if (g?.crypto?.randomUUID) return g.crypto.randomUUID()
   return `id_${Math.random().toString(16).slice(2)}_${Date.now()}`
@@ -1501,7 +1430,6 @@ function formatDateTime(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   try {
-    // India-friendly
     return d.toLocaleString('en-IN', {
       year: 'numeric',
       month: 'short',
@@ -1512,4 +1440,21 @@ function formatDateTime(iso: string) {
   } catch {
     return iso
   }
+}
+
+function validateRegistrationNumber(reg?: string) {
+  const s = String(reg ?? '').trim().toUpperCase()
+  if (!s) return { ok: false, status: 'MISSING' as const, normalized: '' }
+  const ok = /^[A-Z0-9\/-]{5,25}$/.test(s)
+  if (!ok) return { ok: false, status: 'INVALID_FORMAT' as const, normalized: s }
+  return { ok: true, status: 'VALID_FORMAT' as const, normalized: s }
+}
+
+function pvFromEmi(emi: number, annualRatePct: number, months: number) {
+  const r = annualRatePct / 12 / 100
+  const n = Math.max(1, months)
+  if (r <= 0) return emi * n
+  const pow = Math.pow(1 + r, n)
+  const pv = (emi * (pow - 1)) / (r * pow)
+  return Number.isFinite(pv) ? pv : 0
 }
