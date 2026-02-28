@@ -27,12 +27,11 @@ type DoctorLead = {
   fullName: string
   registrationNumber?: string
   mobileNumber: string
-  email: string
+  email?: string
   cityOrPinCode?: string
   qualification?: string[]
   remarks?: string
 
-  // financial fields (backend schema me bhi add karne honge)
   monthlyGrossIncome?: number
   monthlyNetIncome?: number
   otherIncomeSources?: number
@@ -47,7 +46,6 @@ export default function UpdateDetailsPage() {
   const [loading, setLoading] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [doctor, setDoctor] = React.useState<DoctorLead | null>(null)
-
   const [monthlyGrossIncome, setMonthlyGrossIncome] = React.useState('')
   const [monthlyNetIncome, setMonthlyNetIncome] = React.useState('')
   const [otherIncomeSources, setOtherIncomeSources] = React.useState('')
@@ -59,14 +57,14 @@ export default function UpdateDetailsPage() {
     return t
   }
 
-  const toNumberOrUndef = (v: string) => {
-    const t = v.trim()
-    if (!t) return undefined
+  const parseNumber = (v: string) => {
+    const t = String(v ?? '').trim()
+    if (!t) return { kind: 'blank' as const }
     const n = Number(t)
-    return Number.isNaN(n) ? undefined : n
+    if (!Number.isFinite(n)) return { kind: 'invalid' as const }
+    return { kind: 'ok' as const, value: n }
   }
 
-  // ✅ load doctor on page open
   React.useEffect(() => {
     const run = async () => {
       if (!id) return
@@ -94,9 +92,9 @@ export default function UpdateDetailsPage() {
         }
 
         setDoctor(data)
-        setMonthlyGrossIncome(data?.monthlyGrossIncome?.toString?.() ?? '')
-        setMonthlyNetIncome(data?.monthlyNetIncome?.toString?.() ?? '')
-        setOtherIncomeSources(data?.otherIncomeSources?.toString?.() ?? '')
+        setMonthlyGrossIncome(data?.monthlyGrossIncome !== undefined && data?.monthlyGrossIncome !== null ? String(data.monthlyGrossIncome) : '')
+        setMonthlyNetIncome(data?.monthlyNetIncome !== undefined && data?.monthlyNetIncome !== null ? String(data.monthlyNetIncome) : '')
+        setOtherIncomeSources(data?.otherIncomeSources !== undefined && data?.otherIncomeSources !== null ? String(data.otherIncomeSources) : '')
       } catch {
         toast({ title: 'Server error', status: 'error' })
       } finally {
@@ -107,7 +105,6 @@ export default function UpdateDetailsPage() {
     run()
   }, [id, router, toast])
 
-  // ✅ save financial fields
   const handleSave = async () => {
     const token = getToken()
     if (!token) {
@@ -116,10 +113,29 @@ export default function UpdateDetailsPage() {
       return
     }
 
-    const payload = {
-      monthlyGrossIncome: toNumberOrUndef(monthlyGrossIncome),
-      monthlyNetIncome: toNumberOrUndef(monthlyNetIncome),
-      otherIncomeSources: toNumberOrUndef(otherIncomeSources),
+    const payload: any = {}
+    const g = parseNumber(monthlyGrossIncome)
+    if (g.kind === 'ok') payload.monthlyGrossIncome = g.value
+    if (g.kind === 'blank') payload.monthlyGrossIncome = null
+    if (g.kind === 'invalid') {
+      toast({ title: 'Invalid Monthly Gross Income', status: 'warning' })
+      return
+    }
+
+    const n = parseNumber(monthlyNetIncome)
+    if (n.kind === 'ok') payload.monthlyNetIncome = n.value
+    if (n.kind === 'blank') payload.monthlyNetIncome = null
+    if (n.kind === 'invalid') {
+      toast({ title: 'Invalid Monthly Net Income', status: 'warning' })
+      return
+    }
+
+    const o = parseNumber(otherIncomeSources)
+    if (o.kind === 'ok') payload.otherIncomeSources = o.value
+    if (o.kind === 'blank') payload.otherIncomeSources = null
+    if (o.kind === 'invalid') {
+      toast({ title: 'Invalid Other Income Sources', status: 'warning' })
+      return
     }
 
     setSaving(true)
@@ -164,38 +180,44 @@ export default function UpdateDetailsPage() {
             <Box>
               <Heading size="md">{doctor?.fullName || (loading ? 'Loading...' : '—')}</Heading>
               <Text fontSize="sm" color="gray.600" mt={1}>
-                {(doctor?.qualification || []).join(', ') || '—'} <Text as="span" color="gray.400">•</Text> {doctor?.cityOrPinCode || '—'}
+                {(doctor?.qualification || []).join(', ') || '—'}{' '}
+                <Text as="span" color="gray.400">
+                  •
+                </Text>{' '}
+                {doctor?.cityOrPinCode || '—'}
               </Text>
             </Box>
             <HStack spacing={8}>
               <Box textAlign="right">
-                <Text fontSize="xs" color="gray.500">Mobile</Text>
+                <Text fontSize="xs" color="gray.500">
+                  Mobile
+                </Text>
                 <Text fontWeight="700">{doctor?.mobileNumber || '—'}</Text>
               </Box>
               <Box textAlign="right">
-                <Text fontSize="xs" color="gray.500">Reg No</Text>
+                <Text fontSize="xs" color="gray.500">
+                  Reg No
+                </Text>
                 <Text fontWeight="700">{doctor?.registrationNumber || 'N/A'}</Text>
               </Box>
             </HStack>
           </HStack>
         </Box>
 
-        <Box
-          mt={6}
-          display="grid"
-          gridTemplateColumns={{ base: '1fr', lg: '360px 1fr' }}
-          gap={5}
-          alignItems="start"
-        >
+        <Box mt={6} display="grid" gridTemplateColumns={{ base: '1fr', lg: '360px 1fr' }} gap={5} alignItems="start">
           {/* progress */}
           <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 5 }} boxShadow="sm">
-            <Heading size="sm" mb={4}>Progress</Heading>
+            <Heading size="sm" mb={4}>
+              Progress
+            </Heading>
 
             <Stack spacing={4}>
               <Box>
                 <HStack justify="space-between">
                   <Text fontSize="sm">Personal</Text>
-                  <Text fontSize="sm" color="green.600" fontWeight="700">Done</Text>
+                  <Text fontSize="sm" color="green.600" fontWeight="700">
+                    Done
+                  </Text>
                 </HStack>
                 <Progress mt={2} value={100} borderRadius="full" />
               </Box>
@@ -203,7 +225,9 @@ export default function UpdateDetailsPage() {
               <Box>
                 <HStack justify="space-between">
                   <Text fontSize="sm">Financials</Text>
-                  <Text fontSize="sm" color="blue.600" fontWeight="700">In Progress</Text>
+                  <Text fontSize="sm" color="blue.600" fontWeight="700">
+                    In Progress
+                  </Text>
                 </HStack>
                 <Progress mt={2} value={55} borderRadius="full" />
               </Box>
@@ -211,7 +235,9 @@ export default function UpdateDetailsPage() {
               <Box>
                 <HStack justify="space-between">
                   <Text fontSize="sm">Assets</Text>
-                  <Text fontSize="sm" color="gray.500" fontWeight="700">Pending</Text>
+                  <Text fontSize="sm" color="gray.500" fontWeight="700">
+                    Pending
+                  </Text>
                 </HStack>
                 <Progress mt={2} value={5} borderRadius="full" />
               </Box>
@@ -236,9 +262,15 @@ export default function UpdateDetailsPage() {
 
             <Tabs variant="soft-rounded" colorScheme="blue">
               <TabList bg="gray.50" borderRadius="xl" p={1}>
-                <Tab borderRadius="xl" fontWeight="700">Income &amp; Cash Flow</Tab>
-                <Tab borderRadius="xl" fontWeight="700">Obligations</Tab>
-                <Tab borderRadius="xl" fontWeight="700">Assets</Tab>
+                <Tab borderRadius="xl" fontWeight="700">
+                  Income &amp; Cash Flow
+                </Tab>
+                <Tab borderRadius="xl" fontWeight="700">
+                  Obligations
+                </Tab>
+                <Tab borderRadius="xl" fontWeight="700">
+                  Assets
+                </Tab>
               </TabList>
 
               <TabPanels mt={5}>
@@ -298,6 +330,7 @@ function Field({
         {label}
       </Text>
       <Input
+        type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Enter amount"
