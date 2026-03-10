@@ -30,7 +30,7 @@ import {
   FormControl,
   FormLabel,
   Flex,
-  Tooltip, // ✅ added (only for UI)
+  Tooltip,
 } from '@chakra-ui/react'
 import { jwtDecode } from 'jwt-decode'
 import { SearchIcon, ChevronDownIcon, DownloadIcon } from '@chakra-ui/icons'
@@ -53,7 +53,6 @@ type DoctorLeadRow = {
   consent?: boolean
   createdAt?: string
   remarks?: string
-
   monthlyGrossIncome?: number
   monthlyNetIncome?: number
   otherIncomeSources?: number
@@ -146,6 +145,7 @@ const matchCityOrPin = (cityOrPinValue: any, userQuery: string) => {
 
   const raw = normalizeText(cityOrPinValue)
   if (!raw) return false
+
   if (/^\d+$/.test(q)) {
     const rawDigits = raw.replace(/\D/g, '')
     return rawDigits.includes(q)
@@ -173,13 +173,16 @@ export default function AdminDoctorsPage() {
 
   const [q, setQ] = React.useState('')
   const [debouncedQ, setDebouncedQ] = React.useState(q)
+
+  const [city, setCity] = React.useState('')
+  const [risk, setRisk] = React.useState<RiskFilter>('all')
+
+  const [exporting, setExporting] = React.useState(false)
+
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 350)
     return () => clearTimeout(t)
   }, [q])
-
-  const [city, setCity] = React.useState('')
-  const [risk, setRisk] = React.useState<RiskFilter>('all')
 
   React.useEffect(() => {
     setRole(getRoleFromToken())
@@ -224,26 +227,35 @@ export default function AdminDoctorsPage() {
     return Math.round((filled / fields.length) * 100)
   }, [])
 
-  const getRiskBucket = (completion: number) => (completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High')
+  const getRiskBucket = React.useCallback(
+    (completion: number) => (completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High'),
+    []
+  )
 
   const riskColor = (bucket: 'Low' | 'Medium' | 'High') =>
     bucket === 'Low' ? 'green' : bucket === 'Medium' ? 'yellow' : 'red'
 
-  const filtered = React.useMemo(() => {
-    return rows.filter((d) => {
-      const cityOk = matchCityOrPin(d.cityOrPinCode, city)
+  const applyClientFilters = React.useCallback(
+    (items: DoctorLeadRow[]) => {
+      return items.filter((d) => {
+        const cityOk = matchCityOrPin(d.cityOrPinCode, city)
 
-      const completion = calcProfileCompletion(d)
-      const bucket = getRiskBucket(completion)
-      const riskOk =
-        risk === 'all' ||
-        (risk === 'low' && bucket === 'Low') ||
-        (risk === 'medium' && bucket === 'Medium') ||
-        (risk === 'high' && bucket === 'High')
+        const completion = calcProfileCompletion(d)
+        const bucket = getRiskBucket(completion)
 
-      return cityOk && riskOk
-    })
-  }, [rows, city, risk, calcProfileCompletion])
+        const riskOk =
+          risk === 'all' ||
+          (risk === 'low' && bucket === 'Low') ||
+          (risk === 'medium' && bucket === 'Medium') ||
+          (risk === 'high' && bucket === 'High')
+
+        return cityOk && riskOk
+      })
+    },
+    [city, risk, calcProfileCompletion, getRiskBucket]
+  )
+
+  const filtered = React.useMemo(() => applyClientFilters(rows), [rows, applyClientFilters])
 
   const fetchAll = React.useCallback(async () => {
     const token = getToken()
@@ -313,47 +325,147 @@ export default function AdminDoctorsPage() {
     fetchAll()
   }, [isAdmin, fetchAll])
 
+  const fetchAllDoctorsForExport = React.useCallback(async () => {
+    const token = getToken()
+    if (!token) throw new Error('Please login first')
+
+    const base = process.env.NEXT_PUBLIC_API_URL
+    if (!base) throw new Error('NEXT_PUBLIC_API_URL is missing')
+
+    const allItems: DoctorLeadRow[] = []
+    let currentPage = 1
+    const exportLimit = 1000
+    let pages = 1
+
+    do {
+      const url = new URL(`${base}/doctor-lead/get-lead`)
+      url.searchParams.set('page', String(currentPage))
+      url.searchParams.set('limit', String(exportLimit))
+
+      const s = debouncedQ?.trim()
+      if (s) url.searchParams.set('search', s)
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        throw new Error(
+          Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed to fetch export data'
+        )
+      }
+
+      const items = normalizeItems(data)
+      allItems.push(...items)
+
+      const tp = pickNumber(data?.totalPages, data?.data?.totalPages, data?.pagination?.totalPages)
+      pages = tp && tp > 0 ? tp : 1
+      currentPage += 1
+    } while (currentPage <= pages)
+
+    return applyClientFilters(allItems)
+  }, [debouncedQ, applyClientFilters])
+
   const canPrev = page > 1
   const canNext = page < totalPages
 
-  const exportCurrentPageCSV = () => {
-    const data = filtered
-    const header = ['Name', 'Mobile', 'Email', 'RegNo', 'CityOrPin', 'CIBIL', 'Completion%', 'Risk', 'CreatedAt', 'DoctorId']
+  const exportAllCSV = async () => {
+    try {
+      setExporting(true)
 
-    const lines = [
-      header.join(','),
-      ...data.map((d) => {
-        const completion = calcProfileCompletion(d)
-        const bucket = getRiskBucket(completion)
-        return [
-          csvEscape(d.fullName),
-          csvEscape(d.mobileNumber),
-          csvEscape(d.email ?? ''),
-          csvEscape(d.registrationNumber ?? ''),
-          csvEscape(d.cityOrPinCode ?? ''),
-          csvEscape(d.cibilScore ?? ''),
-          csvEscape(completion),
-          csvEscape(bucket),
-          csvEscape(d.createdAt ?? ''),
-          csvEscape(d._id),
-        ].join(',')
-      }),
-    ].join('\n')
+      const data = await fetchAllDoctorsForExport()
 
-    downloadTextFile(`doctors_page_${page}.csv`, lines, 'text/csv')
+      if (!data.length) {
+        toast({
+          title: 'No data found',
+          description: 'There is no data to export for current filters.',
+          status: 'info',
+        })
+        return
+      }
+
+      const header = ['Name', 'Mobile', 'Email', 'RegNo', 'CityOrPin', 'CIBIL', 'Completion%', 'Risk', 'CreatedAt', 'DoctorId']
+
+      const lines = [
+        header.join(','),
+        ...data.map((d) => {
+          const completion = calcProfileCompletion(d)
+          const bucket = getRiskBucket(completion)
+
+          return [
+            csvEscape(d.fullName),
+            csvEscape(d.mobileNumber),
+            csvEscape(d.email ?? ''),
+            csvEscape(d.registrationNumber ?? ''),
+            csvEscape(d.cityOrPinCode ?? ''),
+            csvEscape(d.cibilScore ?? ''),
+            csvEscape(completion),
+            csvEscape(bucket),
+            csvEscape(d.createdAt ?? ''),
+            csvEscape(d._id),
+          ].join(',')
+        }),
+      ].join('\n')
+
+      downloadTextFile('doctors_full_export.csv', lines, 'text/csv')
+
+      toast({
+        title: 'CSV exported',
+        description: `${data.length} records downloaded successfully.`,
+        status: 'success',
+      })
+    } catch (e: any) {
+      toast({
+        title: 'Export failed',
+        description: e?.message || 'Unable to export CSV',
+        status: 'error',
+      })
+    } finally {
+      setExporting(false)
+    }
   }
 
-  const exportCurrentPageJSON = () => {
-    const payload = {
-      page,
-      limit,
-      totalPages,
-      totalDoctors,
-      search: debouncedQ,
-      filters: { city, risk },
-      items: filtered,
+  const exportAllJSON = async () => {
+    try {
+      setExporting(true)
+
+      const data = await fetchAllDoctorsForExport()
+
+      if (!data.length) {
+        toast({
+          title: 'No data found',
+          description: 'There is no data to export for current filters.',
+          status: 'info',
+        })
+        return
+      }
+
+      const payload = {
+        search: debouncedQ,
+        filters: { city, risk },
+        total: data.length,
+        items: data,
+      }
+
+      downloadTextFile('doctors_full_export.json', JSON.stringify(payload, null, 2), 'application/json')
+
+      toast({
+        title: 'JSON exported',
+        description: `${data.length} records downloaded successfully.`,
+        status: 'success',
+      })
+    } catch (e: any) {
+      toast({
+        title: 'Export failed',
+        description: e?.message || 'Unable to export JSON',
+        status: 'error',
+      })
+    } finally {
+      setExporting(false)
     }
-    downloadTextFile(`doctors_page_${page}.json`, JSON.stringify(payload, null, 2), 'application/json')
   }
 
   const copyCurrentQueryLink = async () => {
@@ -376,7 +488,6 @@ export default function AdminDoctorsPage() {
       <Container maxW="container.2xl">
         <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" p={{ base: 4, md: 5 }}>
           <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-            {/* ✅ ONLY CHANGE: Heading + description made trendy (rest untouched) */}
             <Box>
               <HStack spacing={3} align="center" flexWrap="wrap">
                 <Box
@@ -412,14 +523,8 @@ export default function AdminDoctorsPage() {
                   </HStack>
                 </Box>
               </HStack>
-
-              <Text fontSize="sm" color="gray.600" mt={3} maxW="2xl">
-                Find any doctor lead instantly using search + smart filters. Tap <b>Open</b> to view profile, eligibility
-                insights, and activity history.
-              </Text>
             </Box>
 
-            {/* ✅ stays as you liked */}
             <Tooltip label="Total doctor leads in system" hasArrow>
               <Badge
                 borderRadius="full"
@@ -494,16 +599,18 @@ export default function AdminDoctorsPage() {
           <Menu>
             <MenuButton
               as={Button}
-              leftIcon={<DownloadIcon />}
+              leftIcon={exporting ? <Spinner size="sm" /> : <DownloadIcon />}
               rightIcon={<ChevronDownIcon />}
               colorScheme="green"
               borderRadius="md"
+              isLoading={exporting}
+              loadingText="Exporting"
             >
               Export
             </MenuButton>
             <MenuList>
-              <MenuItem onClick={exportCurrentPageCSV}>Export current page (CSV)</MenuItem>
-              <MenuItem onClick={exportCurrentPageJSON}>Export current page (JSON)</MenuItem>
+              <MenuItem onClick={exportAllCSV}>Export full data (CSV)</MenuItem>
+              <MenuItem onClick={exportAllJSON}>Export full data (JSON)</MenuItem>
               <MenuItem onClick={copyCurrentQueryLink}>Copy current filter link</MenuItem>
             </MenuList>
           </Menu>
