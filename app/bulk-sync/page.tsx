@@ -14,7 +14,11 @@ import {
   Text,
   useToast,
 } from '@chakra-ui/react'
-import { FiUpload, FiDatabase, FiSearch, FiCheckCircle } from 'react-icons/fi'
+import { FiCheckCircle, FiDatabase, FiSearch, FiUpload } from 'react-icons/fi'
+
+const MAX_FILE_SIZE_MB = 50
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+const SUPPORTED_EXTENSIONS = ['.csv', '.xlsx']
 
 export default function BulkSyncPage() {
   const toast = useToast()
@@ -24,51 +28,95 @@ export default function BulkSyncPage() {
   const [uploading, setUploading] = React.useState(false)
 
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+
   const pickFile = () => inputRef.current?.click()
 
-  const validateFile = (f: File) => {
-    const name = f.name.toLowerCase()
-    const ok = name.endsWith('.csv') || name.endsWith('.xlsx')
-    if (!ok) {
+  const resetFileInput = () => {
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  const removeSelectedFile = () => {
+    setFile(null)
+    resetFileInput()
+  }
+
+  const isSupportedFile = (selectedFile: File) => {
+    const lowerName = selectedFile.name.toLowerCase()
+    return SUPPORTED_EXTENSIONS.some((ext) => lowerName.endsWith(ext))
+  }
+
+  const validateFile = (selectedFile: File) => {
+    if (!isSupportedFile(selectedFile)) {
       toast({
         title: 'Invalid file type',
-        description: 'Only .csv or .xlsx allowed.',
+        description: 'Only .csv and .xlsx files are allowed.',
         status: 'warning',
+        duration: 3000,
+        isClosable: true,
       })
       return false
     }
+
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      toast({
+        title: 'File too large',
+        description: `Maximum allowed size is ${MAX_FILE_SIZE_MB} MB.`,
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return false
+    }
+
     return true
   }
 
-  const onFileSelected = (f: File | null) => {
-    if (!f) return
-    if (!validateFile(f)) return
-    setFile(f)
+  const onFileSelected = (selectedFile: File | null) => {
+    if (!selectedFile) return
+    if (!validateFile(selectedFile)) {
+      resetFileInput()
+      return
+    }
+    setFile(selectedFile)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     setDragOver(false)
 
-    const dropped = e.dataTransfer.files?.[0]
-    if (dropped) onFileSelected(dropped)
+    const droppedFile = e.dataTransfer.files?.[0]
+    if (droppedFile) onFileSelected(droppedFile)
   }
 
-  // ✅ strict CSV encoder (prevents missing columns / shifting)
-  const csvCell = (v: any) => {
-    const s = v === null || v === undefined ? '' : String(v)
-    return `"${s.replace(/"/g, '""')}"`
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(true)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+  }
+
+  const csvCell = (value: unknown) => {
+    const text = value === null || value === undefined ? '' : String(value)
+    return `"${text.replace(/"/g, '""')}"`
   }
 
   const downloadSampleCsv = () => {
-    // ✅ mandatory: fullName, mobileNumber, cityOrPinCode
-    // ✅ optional: includes panNumber + aadharNumber (NOT mandatory)
     const headers = [
       'fullName',
       'mobileNumber',
       'cityOrPinCode',
-
       'email',
       'registrationNumber',
       'panNumber',
@@ -91,18 +139,17 @@ export default function BulkSyncPage() {
       'cibilScore',
     ]
 
-    const rows: (string | number | boolean | null | undefined)[][] = [
+    const rows: Array<Array<string | number | boolean>> = [
       [
         'Dr. Asha Mehta',
         '9876543210',
         'Delhi',
-
         'asha.mehta@example.com',
         'REG-DEL-12345',
-        'ABCDE1234F', // ✅ panNumber
-        '123412341234', // ✅ aadharNumber
+        'ABCDE1234F',
+        '123412341234',
         8,
-        'MBBS|MD', // ✅ use | to avoid comma issues in CSV
+        'MBBS|MD',
         'Clinic|Hospital',
         'Interested in working capital',
         true,
@@ -120,28 +167,50 @@ export default function BulkSyncPage() {
       ],
     ]
 
-    const csv = [
+    const csvContent = [
       headers.map(csvCell).join(','),
-      ...rows.map((r) => headers.map((_, i) => csvCell(r[i])).join(',')),
+      ...rows.map((row) => headers.map((_, index) => csvCell(row[index])).join(',')),
     ].join('\n')
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
 
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'doctor-lead-sample.csv'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'doctor-lead-sample.csv'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
     URL.revokeObjectURL(url)
 
-    toast({ title: 'Sample file downloaded', status: 'success' })
+    toast({
+      title: 'Sample file downloaded',
+      status: 'success',
+      duration: 2500,
+      isClosable: true,
+    })
   }
 
   const handleUpload = async () => {
     if (!file) {
-      toast({ title: 'Please select a file first', status: 'info' })
+      toast({
+        title: 'Please select a file first',
+        status: 'info',
+        duration: 2500,
+        isClosable: true,
+      })
+      return
+    }
+
+    const baseUrl = String(process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
+    if (!baseUrl) {
+      toast({
+        title: 'API URL missing',
+        description: 'Set NEXT_PUBLIC_API_URL in your environment.',
+        status: 'error',
+        duration: 3500,
+        isClosable: true,
+      })
       return
     }
 
@@ -149,23 +218,26 @@ export default function BulkSyncPage() {
     formData.append('file', file)
 
     setUploading(true)
-    try {
-      const baseUrl = String(process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-      const url = `${baseUrl}/doctor-lead/bulk-sync/upload`
 
-      const res = await fetch(url, {
+    try {
+      const response = await fetch(`${baseUrl}/doctor-lead/bulk-sync/upload`, {
         method: 'POST',
         body: formData,
-        // ✅ DO NOT set Content-Type manually for FormData
       })
 
-      const data = await res.json().catch(() => ({}))
+      const data = await response.json().catch(() => ({}))
 
-      if (!res.ok) {
+      if (!response.ok) {
+        const errorMessage = Array.isArray(data?.message)
+          ? data.message.join(', ')
+          : data?.message || 'Upload failed.'
+
         toast({
           title: 'Upload failed',
-          description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
+          description: errorMessage,
           status: 'error',
+          duration: 4000,
+          isClosable: true,
         })
         return
       }
@@ -174,14 +246,18 @@ export default function BulkSyncPage() {
         title: 'File uploaded successfully',
         description: `Inserted: ${data?.inserted ?? 0}, Updated: ${data?.updated ?? 0}, Skipped: ${data?.skipped ?? 0}`,
         status: 'success',
+        duration: 4000,
+        isClosable: true,
       })
 
-      setFile(null)
-    } catch (e: any) {
+      removeSelectedFile()
+    } catch (error: any) {
       toast({
         title: 'Server error',
-        description: e?.message || 'Something went wrong',
+        description: error?.message || 'Something went wrong.',
         status: 'error',
+        duration: 4000,
+        isClosable: true,
       })
     } finally {
       setUploading(false)
@@ -191,7 +267,6 @@ export default function BulkSyncPage() {
   return (
     <Box minH="100vh" bg="gray.50" pt="90px" pb={{ base: 10, md: 14 }}>
       <Container maxW="container.lg">
-        {/* Title */}
         <Stack spacing={2} align="center" textAlign="center" mb={{ base: 8, md: 10 }}>
           <HStack spacing={2}>
             <Icon as={FiDatabase} boxSize={7} color="blue.600" />
@@ -199,13 +274,13 @@ export default function BulkSyncPage() {
               Data Synchronization Engine
             </Heading>
           </HStack>
+
           <Text color="gray.600" maxW="2xl">
             Bulk upload doctor records to identify existing profiles and capture new leads at scale.
           </Text>
         </Stack>
 
         <Flex gap={6} direction={{ base: 'column', md: 'row' }} align="stretch">
-          {/* Upload Card */}
           <Box
             flex="1"
             bg="white"
@@ -224,21 +299,9 @@ export default function BulkSyncPage() {
               px={{ base: 5, md: 8 }}
               textAlign="center"
               transition="0.15s"
-              onDragEnter={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setDragOver(true)
-              }}
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setDragOver(true)
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setDragOver(false)
-              }}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
               <Box
@@ -258,6 +321,7 @@ export default function BulkSyncPage() {
               <Heading size="md" color="gray.800" mb={2}>
                 Upload Doctor Database
               </Heading>
+
               <Text color="gray.500" fontSize="sm" mb={5}>
                 Drag and drop your CSV/Excel file or click to browse
               </Text>
@@ -281,12 +345,23 @@ export default function BulkSyncPage() {
               </HStack>
 
               <Text mt={4} fontSize="xs" color="gray.500">
-                Supported: .csv, .xlsx (Max 1M rows)
+                Supported: .csv, .xlsx (Max {MAX_FILE_SIZE_MB} MB)
               </Text>
 
-              {file ? (
-                <Box mt={6} p={3} border="1px solid" borderColor="gray.200" borderRadius="xl" bg="gray.50">
-                  <HStack justify="space-between">
+              <Text mt={1} fontSize="xs" color="gray.400">
+                Recommended size: 20–30 MB for smooth processing.
+              </Text>
+
+              {file && (
+                <Box
+                  mt={6}
+                  p={3}
+                  border="1px solid"
+                  borderColor="gray.200"
+                  borderRadius="xl"
+                  bg="gray.50"
+                >
+                  <HStack justify="space-between" align="start">
                     <Box textAlign="left" maxW="70%">
                       <Text fontWeight="700" fontSize="sm" color="gray.700" noOfLines={1}>
                         {file.name}
@@ -296,7 +371,7 @@ export default function BulkSyncPage() {
                       </Text>
                     </Box>
 
-                    <Button size="sm" variant="ghost" onClick={() => setFile(null)}>
+                    <Button size="sm" variant="ghost" onClick={removeSelectedFile}>
                       Remove
                     </Button>
                   </HStack>
@@ -313,11 +388,10 @@ export default function BulkSyncPage() {
                     Upload & Sync
                   </Button>
                 </Box>
-              ) : null}
+              )}
             </Box>
           </Box>
 
-          {/* Sync Logic Card */}
           <Box
             w={{ base: '100%', md: '320px' }}
             bg="white"
@@ -344,12 +418,13 @@ export default function BulkSyncPage() {
                 >
                   <Icon as={FiSearch} color="blue.600" />
                 </Box>
+
                 <Box>
                   <Text fontWeight="700" color="gray.800" fontSize="sm">
                     Deduplication
                   </Text>
                   <Text fontSize="xs" color="gray.500">
-                    Checks against Mobile, Email, and Reg No.
+                    Checks against Mobile, Email, and Registration Number.
                   </Text>
                 </Box>
               </HStack>
@@ -366,6 +441,7 @@ export default function BulkSyncPage() {
                 >
                   <Icon as={FiCheckCircle} color="green.600" />
                 </Box>
+
                 <Box>
                   <Text fontWeight="700" color="gray.800" fontSize="sm">
                     Conflict Resolution
