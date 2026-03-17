@@ -21,9 +21,8 @@ import {
 } from '@chakra-ui/react'
 import { FiArrowRight, FiSearch } from 'react-icons/fi'
 
-
 const HERO_BG = '/static/doctor-portal-bg.png'
-const PENDING_KEY = 'pending_identify_search' 
+const PENDING_KEY = 'pending_identify_search'
 
 type DetectMode = 'mobile' | 'email' | 'reg'
 
@@ -53,26 +52,46 @@ const HeroSection: React.FC = () => {
     return t
   }
 
-  // ✅ auto-detect
   const detectMode = (qRaw: string): DetectMode | null => {
     const q = qRaw.trim()
     if (!q) return null
 
-    // mobile
-    if (/^[6-9]\d{9}$/.test(q)) return 'mobile'
+    const mobileOnly = q.replace(/\D/g, '')
+    let normalizedMobile = mobileOnly
 
-    // email
+    if (normalizedMobile.startsWith('91') && normalizedMobile.length === 12) {
+      normalizedMobile = normalizedMobile.slice(2)
+    }
+
+    if (/^[6-9]\d{9}$/.test(normalizedMobile)) return 'mobile'
+
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q)) return 'email'
 
-    // reg (relaxed)
-    if (/^[A-Z0-9\/\- ]{3,30}$/.test(q.toUpperCase())) return 'reg'
+    const upper = q.toUpperCase()
+    const hasLetterOrSymbol = /[A-Z\/\-]/.test(upper)
+
+    if (hasLetterOrSymbol && /^[A-Z0-9\/\- ]{3,30}$/.test(upper)) {
+      return 'reg'
+    }
 
     return null
   }
 
   const normalize = (qRaw: string, m: DetectMode) => {
     const q = qRaw.trim()
-    if (m === 'reg') return q.toUpperCase().replace(/\s+/g, ' ').trim()
+
+    if (m === 'mobile') {
+      let mobile = q.replace(/\D/g, '')
+      if (mobile.startsWith('91') && mobile.length === 12) {
+        mobile = mobile.slice(2)
+      }
+      return mobile
+    }
+
+    if (m === 'reg') {
+      return q.toUpperCase().replace(/\s+/g, ' ').trim()
+    }
+
     return q
   }
 
@@ -88,9 +107,7 @@ const HeroSection: React.FC = () => {
     setLoading(true)
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/get-lead?search=${encodeURIComponent(
-          searchValue,
-        )}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/get-lead?search=${encodeURIComponent(searchValue)}`,
         {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
@@ -124,13 +141,11 @@ const HeroSection: React.FC = () => {
       const items = Array.isArray(data?.items) ? data.items : []
 
       if (items.length === 0) {
-        router.push(
-          `/doctor-lead?mode=${m}&q=${encodeURIComponent(searchValue)}`,
-        )
+        router.push(`/profession-lead?mode=${m}&q=${encodeURIComponent(searchValue)}`)
         return
       }
 
-      router.push(`/doctor/${items[0]._id}`)
+      router.push(`/profession/${items[0]._id}`)
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {
@@ -138,7 +153,6 @@ const HeroSection: React.FC = () => {
     }
   }
 
-  // ✅ login ke baad wapas aake auto-run pending search
   React.useEffect(() => {
     const token = getToken()
     if (!token) return
@@ -150,7 +164,6 @@ const HeroSection: React.FC = () => {
       const parsed = JSON.parse(raw)
       const q = String(parsed?.query || '').trim()
 
-      // clear first to avoid loop
       localStorage.removeItem(PENDING_KEY)
 
       if (!q) return
@@ -167,7 +180,6 @@ const HeroSection: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ✅ click -> if not login, save query and go login
   const handleIdentifyClick = async () => {
     const token = getToken()
 
@@ -206,7 +218,7 @@ const HeroSection: React.FC = () => {
       <Box position="absolute" inset={0} zIndex={0}>
         <Image
           src={HERO_BG}
-          alt="Doctor Portal background"
+          alt="Professional Portal background"
           fill
           priority
           style={{ objectFit: 'cover' }}
@@ -229,10 +241,10 @@ const HeroSection: React.FC = () => {
               color="blue.600"
               lineHeight="1.05"
             >
-              Doctor Intelligence Portal
+              Professional Intelligence Portal
             </Heading>
             <Text maxW="3xl" color="gray.600" fontSize={{ base: 'md', md: 'lg' }}>
-              Search doctor by Mobile / Email / Registration No.
+              Search professional by Mobile / Email / Registration No.
             </Text>
           </VStack>
 
@@ -249,7 +261,7 @@ const HeroSection: React.FC = () => {
             <Box px={{ base: 6, md: 10 }} py={{ base: 7, md: 9 }}>
               <VStack spacing={3}>
                 <Heading as="h2" fontSize={{ base: '2xl', md: '3xl' }} color="blue.700" fontWeight="800">
-                  Doctor Identification
+                  Professional Identification
                 </Heading>
 
                 <Box w="100%" pt={3}>
@@ -287,7 +299,7 @@ const HeroSection: React.FC = () => {
                     loadingText="Searching..."
                     onClick={handleIdentifyClick}
                   >
-                    Identify Doctor
+                    Identify Professional
                   </Button>
 
                   <Divider mt={5} borderColor="gray.100" />

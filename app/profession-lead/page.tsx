@@ -10,6 +10,7 @@ import {
   Button,
   Container,
   FormControl,
+  FormErrorMessage,
   FormLabel,
   Grid,
   GridItem,
@@ -20,16 +21,18 @@ import {
   MenuButton,
   MenuDivider,
   MenuList,
+  Select,
   Stack,
   Text,
   VStack,
   useToast,
 } from '@chakra-ui/react'
 
-/** ✅ Move regex OUTSIDE component to avoid exhaustive-deps warning */
 const MOBILE_REGEX = /^[6-9]\d{9}$/
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 const REG_REGEX = /^[A-Z0-9][A-Z0-9\/\-\s]{2,20}[A-Z0-9]$/i
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const AADHAR_REGEX = /^\d{12}$/
 
 type MultiSelectProps = {
   label: string
@@ -37,10 +40,19 @@ type MultiSelectProps = {
   options: string[]
   value: string[]
   onChange: (v: string[]) => void
+  isDisabled?: boolean
 }
 
-function MultiSelect({ label, placeholder = 'Select', options, value, onChange }: MultiSelectProps) {
+function MultiSelect({
+  label,
+  placeholder = 'Select',
+  options,
+  value,
+  onChange,
+  isDisabled = false,
+}: MultiSelectProps) {
   const toggle = (opt: string) => {
+    if (isDisabled) return
     if (value.includes(opt)) onChange(value.filter((x) => x !== opt))
     else onChange([...value, opt])
   }
@@ -49,7 +61,7 @@ function MultiSelect({ label, placeholder = 'Select', options, value, onChange }
     value.length === 0 ? placeholder : value.length <= 2 ? value.join(', ') : `${value.length} selected`
 
   return (
-    <FormControl>
+    <FormControl isDisabled={isDisabled}>
       <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
         {label}
       </FormLabel>
@@ -70,6 +82,7 @@ function MultiSelect({ label, placeholder = 'Select', options, value, onChange }
           borderColor="gray.200"
           _hover={{ borderColor: 'gray.300' }}
           _active={{ bg: 'white' }}
+          isDisabled={isDisabled}
         >
           <Text color={value.length ? 'gray.800' : 'gray.400'} noOfLines={1}>
             {display}
@@ -110,7 +123,7 @@ function MultiSelect({ label, placeholder = 'Select', options, value, onChange }
 
           <MenuDivider />
           <HStack px={2} pt={2} justify="space-between">
-            <Button size="sm" variant="ghost" onClick={() => onChange([])}>
+            <Button size="sm" variant="ghost" onClick={() => onChange([])} isDisabled={isDisabled}>
               Clear
             </Button>
             <Text fontSize="xs" color="gray.500">
@@ -123,18 +136,8 @@ function MultiSelect({ label, placeholder = 'Select', options, value, onChange }
   )
 }
 
-/** ---------- Helpers ---------- */
 type DetectMode = 'mobile' | 'email' | 'reg'
-
-function normalizePrefill(mode: DetectMode, qRaw: string) {
-  const q = String(qRaw || '').trim()
-  if (!q) return ''
-  if (mode === 'reg') return q.toUpperCase().replace(/\s+/g, ' ').trim()
-  if (mode === 'email') return q.toLowerCase()
-  return q
-}
-
-const onlyDigits = (s: string) => String(s || '').replace(/\D/g, '')
+type ProfessionType = 'DOCTOR' | 'CA' | 'LAWYER' | 'ENGINEER' | ''
 
 type ExistsState = {
   checking: boolean
@@ -145,20 +148,56 @@ type ExistsState = {
   error?: string
 }
 
+type ValidationErrors = {
+  profession?: string
+  fullName?: string
+  registrationNumber?: string
+  panNumber?: string
+  aadharNumber?: string
+  mobileNumber?: string
+  email?: string
+  cityOrPinCode?: string
+  yearsOfPractice?: string
+}
+
+function normalizePrefill(mode: DetectMode, qRaw: string) {
+  const q = String(qRaw || '').trim()
+  if (!q) return ''
+  if (mode === 'reg') return q.toUpperCase().replace(/\s+/g, ' ').trim()
+  if (mode === 'email') return q.toLowerCase()
+  return onlyDigits(q).slice(-10)
+}
+
+function onlyDigits(s: string) {
+  return String(s || '').replace(/\D/g, '')
+}
+
+function normalizeMobileInput(s: string) {
+  let digits = onlyDigits(s)
+  if (digits.startsWith('91') && digits.length > 10) {
+    digits = digits.slice(2)
+  }
+  return digits.slice(0, 10)
+}
+
 async function checkLeadExists(params: {
+  profession?: string
   registrationNumber?: string
   panNumber?: string
   mobileNumber?: string
   aadharNumber?: string
+  email?: string
 }) {
   const base = process.env.NEXT_PUBLIC_API_URL
   if (!base) throw new Error('NEXT_PUBLIC_API_URL missing')
 
   const url = new URL(`${base}/doctor-lead/exists`)
-  if (params.mobileNumber) url.searchParams.set('mobile', params.mobileNumber)
+  if (params.profession) url.searchParams.set('profession', params.profession)
+  if (params.mobileNumber) url.searchParams.set('mobileNumber', params.mobileNumber)
   if (params.registrationNumber) url.searchParams.set('registrationNumber', params.registrationNumber)
   if (params.panNumber) url.searchParams.set('panNumber', params.panNumber)
   if (params.aadharNumber) url.searchParams.set('aadharNumber', params.aadharNumber)
+  if (params.email) url.searchParams.set('email', params.email)
 
   const res = await fetch(url.toString())
   const data = await res.json().catch(() => ({}))
@@ -169,10 +208,70 @@ async function checkLeadExists(params: {
 
   return {
     exists: Boolean(data?.exists),
-    matchedFields: Array.isArray(data?.matchedFields) ? data.matchedFields : [],
-    existingId: data?.existingId,
-    existingName: data?.existingName,
+    matchedFields: Array.isArray(data?.matchedOn)
+      ? data.matchedOn
+      : Array.isArray(data?.matchedFields)
+      ? data.matchedFields
+      : [],
+    existingId: data?.leadId || data?.existingId,
+    existingName: data?.fullName || data?.existingName,
   }
+}
+
+const PROFESSION_OPTIONS = [
+  { label: 'Doctor', value: 'DOCTOR' },
+  { label: 'CA', value: 'CA' },
+  { label: 'Lawyer', value: 'LAWYER' },
+  { label: 'Engineer', value: 'ENGINEER' },
+]
+
+const PROFESSION_CONFIG: Record<
+  Exclude<ProfessionType, ''>,
+  {
+    title: string
+    qualificationOptions: string[]
+    practiceOptions: string[]
+    registrationLabel: string
+    registrationPlaceholder: string
+  }
+> = {
+  DOCTOR: {
+    title: 'New Doctor Lead',
+    qualificationOptions: ['DM', 'MD', 'MS', 'DNB', 'MDS', 'MBBS', 'BDS', 'BHMS', 'BAMS', 'Other'],
+    practiceOptions: [
+      'Private Clinic',
+      'Hospital',
+      'Govt Hospital',
+      'Polyclinic',
+      'Nursing Home',
+      'Diagnostic Center',
+      'Consultant',
+      'Other',
+    ],
+    registrationLabel: 'Registration Number',
+    registrationPlaceholder: 'MCI-12345 / UP-889900',
+  },
+  CA: {
+    title: 'New CA Lead',
+    qualificationOptions: ['CA', 'CS', 'CMA', 'B.Com', 'M.Com', 'MBA', 'Other'],
+    practiceOptions: ['Individual Practice', 'CA Firm', 'Audit Firm', 'Consultant', 'In-house Finance', 'Other'],
+    registrationLabel: 'Membership / Registration Number',
+    registrationPlaceholder: 'ICAI Membership No.',
+  },
+  LAWYER: {
+    title: 'New Lawyer Lead',
+    qualificationOptions: ['LLB', 'LLM', 'BA LLB', 'BBA LLB', 'Other'],
+    practiceOptions: ['Independent Practice', 'Law Firm', 'Corporate Legal', 'High Court', 'District Court', 'Other'],
+    registrationLabel: 'Bar Council Registration Number',
+    registrationPlaceholder: 'Bar Council Reg. No.',
+  },
+  ENGINEER: {
+    title: 'New Engineer Lead',
+    qualificationOptions: ['B.Tech', 'BE', 'M.Tech', 'ME', 'Diploma', 'PhD', 'Other'],
+    practiceOptions: ['Private Job', 'Govt Job', 'Consultant', 'Contractor', 'Self Employed', 'Other'],
+    registrationLabel: 'Employee / License / Registration Number',
+    registrationPlaceholder: 'Employee ID / Registration No.',
+  },
 }
 
 export default function NewDoctorLeadPage() {
@@ -180,6 +279,7 @@ export default function NewDoctorLeadPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  const [profession, setProfession] = React.useState<ProfessionType>('DOCTOR')
   const [fullName, setFullName] = React.useState('')
   const [registrationNumber, setRegistrationNumber] = React.useState('')
   const [panNumber, setPanNumber] = React.useState('')
@@ -188,11 +288,11 @@ export default function NewDoctorLeadPage() {
   const [email, setEmail] = React.useState('')
   const [cityOrPinCode, setCityOrPinCode] = React.useState('')
   const [yearsOfPractice, setYearsOfPractice] = React.useState('')
-
   const [qualification, setQualification] = React.useState<string[]>([])
   const [practiceType, setPracticeType] = React.useState<string[]>([])
-
   const [loading, setLoading] = React.useState(false)
+  const [touched, setTouched] = React.useState<Record<string, boolean>>({})
+  const [errors, setErrors] = React.useState<ValidationErrors>({})
 
   const [existsState, setExistsState] = React.useState<ExistsState>({
     checking: false,
@@ -200,23 +300,79 @@ export default function NewDoctorLeadPage() {
     matchedFields: [],
   })
 
-  const QUAL_OPTIONS = ['DM', 'MD', 'MS', 'DNB', 'MDS', 'MBBS', 'BDS', 'BHMS', 'BAMS', 'Other']
-  const PRACTICE_OPTIONS = [
-    'Private Clinic',
-    'Hospital',
-    'Govt Hospital',
-    'Polyclinic',
-    'Nursing Home',
-    'Diagnostic Center',
-    'Consultant',
-    'Other',
-  ]
+  const selectedConfig =
+    profession && PROFESSION_CONFIG[profession]
+      ? PROFESSION_CONFIG[profession]
+      : {
+          title: 'New Professional Lead',
+          qualificationOptions: [],
+          practiceOptions: [],
+          registrationLabel: 'Registration Number',
+          registrationPlaceholder: 'Enter registration number',
+        }
+
+  const markTouched = (field: keyof ValidationErrors) => {
+    setTouched((prev) => ({ ...prev, [field]: true }))
+  }
+
+  const validateForm = React.useCallback((): ValidationErrors => {
+    const nextErrors: ValidationErrors = {}
+
+    const name = fullName.trim()
+    const reg = registrationNumber.trim().toUpperCase()
+    const pan = panNumber.trim().toUpperCase()
+    const aad = onlyDigits(aadharNumber.trim())
+    const mob = normalizeMobileInput(mobileNumber.trim())
+    const mail = email.trim().toLowerCase()
+    const city = cityOrPinCode.trim()
+    const yop = yearsOfPractice.trim()
+
+    if (!profession) nextErrors.profession = 'Please select profession'
+    if (!name) nextErrors.fullName = 'Full name is required'
+    if (!city) nextErrors.cityOrPinCode = 'City / Pin Code is required'
+
+    if (!mob) nextErrors.mobileNumber = 'Mobile number is required'
+    else if (!MOBILE_REGEX.test(mob)) nextErrors.mobileNumber = 'Enter valid 10 digit mobile number'
+
+    if (!mail) nextErrors.email = 'Email is required'
+    else if (!EMAIL_REGEX.test(mail)) nextErrors.email = 'Enter valid email address'
+
+    if (reg && !REG_REGEX.test(reg)) {
+      nextErrors.registrationNumber = 'Enter valid registration number'
+    }
+
+    if (pan && !PAN_REGEX.test(pan)) {
+      nextErrors.panNumber = 'PAN format should be ABCDE1234F'
+    }
+
+    if (aad && !AADHAR_REGEX.test(aad)) {
+      nextErrors.aadharNumber = 'Aadhar must be 12 digits'
+    }
+
+    if (yop) {
+      const n = Number(yop)
+      if (!Number.isFinite(n) || n < 0) {
+        nextErrors.yearsOfPractice = 'Years of practice must be 0 or more'
+      }
+    }
+
+    return nextErrors
+  }, [profession, fullName, registrationNumber, panNumber, aadharNumber, mobileNumber, email, cityOrPinCode, yearsOfPractice])
+
+  React.useEffect(() => {
+    setErrors(validateForm())
+  }, [validateForm])
 
   React.useEffect(() => {
     if (!searchParams) return
 
     const mode = (searchParams.get('mode') || '') as DetectMode
     const q = searchParams.get('q') || ''
+    const professionFromQuery = (searchParams.get('profession') || '').toUpperCase()
+
+    if (professionFromQuery && ['DOCTOR', 'CA', 'LAWYER', 'ENGINEER'].includes(professionFromQuery)) {
+      setProfession(professionFromQuery as ProfessionType)
+    }
 
     if (!q) return
     if (mode !== 'mobile' && mode !== 'email' && mode !== 'reg') return
@@ -229,23 +385,38 @@ export default function NewDoctorLeadPage() {
   }, [searchParams])
 
   React.useEffect(() => {
+    setQualification([])
+    setPracticeType([])
+    setRegistrationNumber('')
+    setExistsState({ checking: false, exists: false, matchedFields: [] })
+    setTouched({})
+  }, [profession])
+
+  React.useEffect(() => {
     const reg = registrationNumber.trim().toUpperCase()
     const pan = panNumber.trim().toUpperCase()
-    const mob = onlyDigits(mobileNumber.trim())
+    const mob = normalizeMobileInput(mobileNumber.trim())
     const aad = onlyDigits(aadharNumber.trim())
+    const mail = email.trim().toLowerCase()
 
-    if (!reg && !pan && !mob && !aad) {
+    if (!profession) {
       setExistsState({ checking: false, exists: false, matchedFields: [] })
       return
     }
 
-    const canCheckMobile = mob ? mob.length === 10 : false
-    const canCheckAadhar = aad ? aad.length === 12 : false
+    if (!reg && !pan && !mob && !aad && !mail) {
+      setExistsState({ checking: false, exists: false, matchedFields: [] })
+      return
+    }
+
+    const canCheckMobile = mob ? MOBILE_REGEX.test(mob) : false
+    const canCheckAadhar = aad ? AADHAR_REGEX.test(aad) : false
     const canCheckPan = pan ? PAN_REGEX.test(pan) : false
     const canCheckReg = reg ? REG_REGEX.test(reg) : false
+    const canCheckEmail = mail ? EMAIL_REGEX.test(mail) : false
 
-    if (!(canCheckMobile || canCheckAadhar || canCheckPan || canCheckReg)) {
-      setExistsState((s) => ({ ...s, exists: false, matchedFields: [], error: undefined }))
+    if (!(canCheckMobile || canCheckAadhar || canCheckPan || canCheckReg || canCheckEmail)) {
+      setExistsState((s) => ({ ...s, exists: false, matchedFields: [], error: undefined, checking: false }))
       return
     }
 
@@ -253,10 +424,12 @@ export default function NewDoctorLeadPage() {
       try {
         setExistsState((s) => ({ ...s, checking: true, error: undefined }))
         const result = await checkLeadExists({
+          profession,
           registrationNumber: canCheckReg ? reg : undefined,
           panNumber: canCheckPan ? pan : undefined,
           mobileNumber: canCheckMobile ? mob : undefined,
           aadharNumber: canCheckAadhar ? aad : undefined,
+          email: canCheckEmail ? mail : undefined,
         })
         setExistsState({ checking: false, ...result })
       } catch (e: any) {
@@ -265,36 +438,41 @@ export default function NewDoctorLeadPage() {
     }, 400)
 
     return () => clearTimeout(t)
-  }, [registrationNumber, panNumber, mobileNumber, aadharNumber])
+  }, [profession, registrationNumber, panNumber, mobileNumber, aadharNumber, email])
+
+  const resetForm = () => {
+    setFullName('')
+    setRegistrationNumber('')
+    setPanNumber('')
+    setAadharNumber('')
+    setMobileNumber('')
+    setEmail('')
+    setCityOrPinCode('')
+    setYearsOfPractice('')
+    setQualification([])
+    setPracticeType([])
+    setTouched({})
+    setErrors({})
+    setExistsState({ checking: false, exists: false, matchedFields: [] })
+  }
 
   const handleSubmit = async () => {
-    const name = fullName.trim()
-    const reg = registrationNumber.trim().toUpperCase()
-    const pan = panNumber.trim().toUpperCase()
-    const aad = onlyDigits(aadharNumber.trim())
-    const mob = onlyDigits(mobileNumber.trim())
-    const mail = email.trim().toLowerCase()
-    const city = cityOrPinCode.trim()
+    const nextErrors = validateForm()
+    setErrors(nextErrors)
+    setTouched({
+      profession: true,
+      fullName: true,
+      registrationNumber: true,
+      panNumber: true,
+      aadharNumber: true,
+      mobileNumber: true,
+      email: true,
+      cityOrPinCode: true,
+      yearsOfPractice: true,
+    })
 
-    if (!name || !reg || !mob || !mail) {
-      toast({ title: 'Please fill Name, Registration, Mobile & Email', status: 'warning' })
-      return
-    }
-
-    if (!REG_REGEX.test(reg)) {
-      toast({ title: 'Invalid Registration Number', status: 'warning' })
-      return
-    }
-    if (!MOBILE_REGEX.test(mob)) {
-      toast({ title: 'Invalid Mobile Number', description: 'Enter valid 10 digit number', status: 'warning' })
-      return
-    }
-    if (pan && !PAN_REGEX.test(pan)) {
-      toast({ title: 'Invalid PAN', description: 'Format: ABCDE1234F', status: 'warning' })
-      return
-    }
-    if (aad && !/^\d{12}$/.test(aad)) {
-      toast({ title: 'Invalid Aadhar', description: 'Aadhar must be 12 digits', status: 'warning' })
+    if (Object.keys(nextErrors).length > 0) {
+      toast({ title: 'Please fix highlighted fields', status: 'warning' })
       return
     }
 
@@ -302,6 +480,7 @@ export default function NewDoctorLeadPage() {
       toast({ title: 'Please wait', description: 'Checking duplicate…', status: 'info' })
       return
     }
+
     if (existsState.exists) {
       toast({
         title: 'Duplicate Found',
@@ -312,16 +491,21 @@ export default function NewDoctorLeadPage() {
     }
 
     const payload: any = {
-      fullName: name,
-      registrationNumber: reg,
-      mobileNumber: mob,
-      email: mail,
-      cityOrPinCode: city,
+      profession,
+      fullName: fullName.trim(),
+      mobileNumber: normalizeMobileInput(mobileNumber.trim()),
+      email: email.trim().toLowerCase(),
+      cityOrPinCode: cityOrPinCode.trim(),
       yearsOfPractice: yearsOfPractice ? Number(yearsOfPractice) : undefined,
       qualification,
       practiceType,
     }
 
+    const reg = registrationNumber.trim().toUpperCase()
+    const pan = panNumber.trim().toUpperCase()
+    const aad = onlyDigits(aadharNumber.trim())
+
+    if (reg) payload.registrationNumber = reg
     if (pan) payload.panNumber = pan
     if (aad) payload.aadharNumber = aad
 
@@ -345,17 +529,7 @@ export default function NewDoctorLeadPage() {
       }
 
       toast({ title: 'Lead created successfully', status: 'success' })
-      setFullName('')
-      setRegistrationNumber('')
-      setPanNumber('')
-      setAadharNumber('')
-      setMobileNumber('')
-      setEmail('')
-      setCityOrPinCode('')
-      setYearsOfPractice('')
-      setQualification([])
-      setPracticeType([])
-      setExistsState({ checking: false, exists: false, matchedFields: [] })
+      resetForm()
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {
@@ -363,7 +537,11 @@ export default function NewDoctorLeadPage() {
     }
   }
 
-  const createDisabled = loading || existsState.checking || existsState.exists
+  const createDisabled =
+    loading ||
+    existsState.checking ||
+    existsState.exists ||
+    Object.keys(errors).length > 0
 
   return (
     <Box minH="100vh" bg="gray.50" py={{ base: 6, md: 10 }}>
@@ -378,9 +556,9 @@ export default function NewDoctorLeadPage() {
         >
           <VStack align="start" spacing={1} mb={6}>
             <Heading size="lg" color="blue.600" fontWeight="700">
-              New Doctor Lead
+              {selectedConfig.title}
             </Heading>
-            <HStack spacing={2}>
+            <HStack spacing={2} flexWrap="wrap">
               <Text fontSize="sm" color="gray.500">
                 Stage 1 - Basic Profile Capture
               </Text>
@@ -389,7 +567,9 @@ export default function NewDoctorLeadPage() {
                 <Badge colorScheme="yellow">Checking duplicate…</Badge>
               ) : existsState.exists ? (
                 <Badge colorScheme="red">Duplicate Found</Badge>
-              ) : null}
+              ) : (
+                <Badge colorScheme="green">Unique Lead</Badge>
+              )}
             </HStack>
           </VStack>
 
@@ -410,7 +590,7 @@ export default function NewDoctorLeadPage() {
                     size="xs"
                     mt={2}
                     variant="outline"
-                    onClick={() => router.push(`/doctor/${existsState.existingId}`)}
+                    onClick={() => router.push(`/profession/${existsState.existingId}`)}
                   >
                     Open existing profile
                   </Button>
@@ -425,20 +605,46 @@ export default function NewDoctorLeadPage() {
           ) : null}
 
           <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={{ base: 4, md: 6 }}>
+            <GridItem colSpan={{ base: 1, md: 2 }}>
+              <FormControl isRequired isInvalid={!!(touched.profession && errors.profession)}>
+                <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
+                  Profession
+                </FormLabel>
+                <Select
+                  value={profession}
+                  onChange={(e) => setProfession(e.target.value as ProfessionType)}
+                  onBlur={() => markTouched('profession')}
+                  bg="white"
+                  borderColor="gray.200"
+                  _hover={{ borderColor: 'gray.300' }}
+                  focusBorderColor="blue.400"
+                >
+                  {PROFESSION_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+                <FormErrorMessage>{errors.profession}</FormErrorMessage>
+              </FormControl>
+            </GridItem>
+
             <GridItem>
-              <FormControl>
+              <FormControl isRequired isInvalid={!!(touched.fullName && errors.fullName)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   Full Name
                 </FormLabel>
                 <Input
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  onBlur={() => markTouched('fullName')}
                   placeholder="Enter full name"
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.fullName}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
@@ -446,124 +652,140 @@ export default function NewDoctorLeadPage() {
               <MultiSelect
                 label="Qualification"
                 placeholder="Select Qualification"
-                options={QUAL_OPTIONS}
+                options={selectedConfig.qualificationOptions}
                 value={qualification}
                 onChange={setQualification}
+                isDisabled={loading}
               />
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isInvalid={!!(touched.registrationNumber && errors.registrationNumber)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
-                  Registration Number
+                  {selectedConfig.registrationLabel}
                 </FormLabel>
                 <Input
                   value={registrationNumber}
                   onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())}
-                  placeholder="MCI-12345 / UP-889900"
+                  onBlur={() => markTouched('registrationNumber')}
+                  placeholder={selectedConfig.registrationPlaceholder}
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.registrationNumber}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isInvalid={!!(touched.panNumber && errors.panNumber)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   PAN (optional)
                 </FormLabel>
                 <Input
                   value={panNumber}
                   onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                  onBlur={() => markTouched('panNumber')}
                   placeholder="ABCDE1234F"
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.panNumber}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isRequired isInvalid={!!(touched.mobileNumber && errors.mobileNumber)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   Mobile Number
                 </FormLabel>
                 <Input
                   value={mobileNumber}
-                  onChange={(e) => setMobileNumber(e.target.value)}
+                  onChange={(e) => setMobileNumber(normalizeMobileInput(e.target.value))}
+                  onBlur={() => markTouched('mobileNumber')}
                   placeholder="Enter mobile number"
                   inputMode="numeric"
+                  maxLength={10}
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.mobileNumber}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isInvalid={!!(touched.aadharNumber && errors.aadharNumber)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   Aadhar (optional)
                 </FormLabel>
                 <Input
                   value={aadharNumber}
-                  onChange={(e) => setAadharNumber(e.target.value)}
+                  onChange={(e) => setAadharNumber(onlyDigits(e.target.value).slice(0, 12))}
+                  onBlur={() => markTouched('aadharNumber')}
                   placeholder="12 digit Aadhar"
                   inputMode="numeric"
+                  maxLength={12}
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.aadharNumber}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isRequired isInvalid={!!(touched.email && errors.email)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   Email ID
                 </FormLabel>
                 <Input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => markTouched('email')}
                   placeholder="Enter email"
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.email}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isRequired isInvalid={!!(touched.cityOrPinCode && errors.cityOrPinCode)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   City / Pin Code
                 </FormLabel>
                 <Input
                   value={cityOrPinCode}
                   onChange={(e) => setCityOrPinCode(e.target.value)}
+                  onBlur={() => markTouched('cityOrPinCode')}
                   placeholder="Enter city or pin code"
                   bg="white"
                   borderColor="gray.200"
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.cityOrPinCode}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
             <GridItem>
-              <FormControl>
+              <FormControl isInvalid={!!(touched.yearsOfPractice && errors.yearsOfPractice)}>
                 <FormLabel fontSize="sm" fontWeight="600" color="gray.700" mb={2}>
                   Years of Practice
                 </FormLabel>
                 <Input
                   value={yearsOfPractice}
-                  onChange={(e) => setYearsOfPractice(e.target.value)}
+                  onChange={(e) => setYearsOfPractice(onlyDigits(e.target.value))}
+                  onBlur={() => markTouched('yearsOfPractice')}
                   placeholder="Enter years"
                   inputMode="numeric"
                   bg="white"
@@ -571,6 +793,7 @@ export default function NewDoctorLeadPage() {
                   _hover={{ borderColor: 'gray.300' }}
                   focusBorderColor="blue.400"
                 />
+                <FormErrorMessage>{errors.yearsOfPractice}</FormErrorMessage>
               </FormControl>
             </GridItem>
 
@@ -578,9 +801,10 @@ export default function NewDoctorLeadPage() {
               <MultiSelect
                 label="Practice Type"
                 placeholder="Select Practice Type"
-                options={PRACTICE_OPTIONS}
+                options={selectedConfig.practiceOptions}
                 value={practiceType}
                 onChange={setPracticeType}
+                isDisabled={loading}
               />
             </GridItem>
           </Grid>

@@ -136,8 +136,8 @@ export const Header = (props: HeaderProps) => {
                 <MenuList borderRadius="xl" py={2} minW="240px">
                   {isAdmin && (
                     <>
-                      <MenuItem onClick={() => router.push('/doctors')} icon={<MdMedicalInformation />}>
-                        View All Doctors
+                      <MenuItem onClick={() => router.push('/professionals')} icon={<MdMedicalInformation />}>
+                        View All Professional
                       </MenuItem>
 
                       <MenuItem onClick={() => router.push('/users')} icon={<FaUserPlus />}>

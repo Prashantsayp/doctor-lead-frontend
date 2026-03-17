@@ -25,12 +25,12 @@ const siteConfig = {
   logo: Logo,
 
   seo: {
-    title: 'F2 Fintech Doctor',
-    description: 'Doctor Intelligence Portal',
-    titleTemplate: '%s | F2 Fintech Doctor',
+    title: 'F2 Fintech',
+    description: 'Professional Intelligence Portal',
+    titleTemplate: '%s | F2 Fintech',
     openGraph: {
       type: 'website',
-      site_name: 'F2 Fintech Doctor',
+      site_name: 'F2 Fintech',
     },
     twitter: {
       cardType: 'summary_large_image',
@@ -52,7 +52,7 @@ const siteConfig = {
       <>
         © {new Date().getFullYear()}&nbsp;
         <Link href="/" _hover={{ color: 'inherit' }}>
-          F2 Fintech Doctor
+          F2 Fintech Pvt. Ltd.
         </Link>
       </>
     ),

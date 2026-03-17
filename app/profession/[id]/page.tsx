@@ -217,7 +217,7 @@ export default function DoctorProfilePage() {
           description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
           status: 'error',
         })
-        router.push(`/doctor-lead/new?mode=unknown&q=${encodeURIComponent(id)}`)
+        router.push(`/profession-lead/new?mode=unknown&q=${encodeURIComponent(id)}`)
         return
       }
 
@@ -448,7 +448,7 @@ export default function DoctorProfilePage() {
     if (typeof window === 'undefined') return
 
     const doctorId = doctor?._id || id
-    const url = `${window.location.origin}/doctor-lead/${doctorId}`
+    const url = `${window.location.origin}/profession-lead/${doctorId}`
     const shareText = `Doctor Profile: ${doctor?.fullName || 'N/A'}\nMobile: ${doctor?.mobileNumber || 'N/A'}\nLink: ${url}`
 
     try {
