@@ -39,9 +39,11 @@ import { SearchIcon, ChevronDownIcon, DownloadIcon } from '@chakra-ui/icons'
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 type RiskFilter = 'all' | 'low' | 'medium' | 'high'
+type ProfessionFilter = 'all' | 'DOCTOR' | 'ENGINEER' | 'LAWYER' | 'CA'
 
 type DoctorLeadRow = {
   _id: string
+  profession?: 'DOCTOR' | 'ENGINEER' | 'LAWYER' | 'CA'
   fullName: string
   registrationNumber?: string
   mobileNumber: string
@@ -154,6 +156,13 @@ const matchCityOrPin = (cityOrPinValue: any, userQuery: string) => {
   return raw.includes(q)
 }
 
+const formatProfession = (profession?: string) => {
+  if (!profession) return 'Doctor'
+  if (profession === 'CA') return 'CA'
+  const lower = profession.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
 export default function AdminDoctorsPage() {
   const router = useRouter()
   const toast = useToast()
@@ -176,6 +185,7 @@ export default function AdminDoctorsPage() {
 
   const [city, setCity] = React.useState('')
   const [risk, setRisk] = React.useState<RiskFilter>('all')
+  const [profession, setProfession] = React.useState<ProfessionFilter>('all')
 
   const [exporting, setExporting] = React.useState(false)
 
@@ -206,7 +216,7 @@ export default function AdminDoctorsPage() {
 
   React.useEffect(() => {
     setPage(1)
-  }, [city, risk])
+  }, [city, risk, profession])
 
   const calcProfileCompletion = React.useCallback((d: DoctorLeadRow) => {
     const fields = [
@@ -249,10 +259,13 @@ export default function AdminDoctorsPage() {
           (risk === 'medium' && bucket === 'Medium') ||
           (risk === 'high' && bucket === 'High')
 
-        return cityOk && riskOk
+        const professionOk =
+          profession === 'all' || String(d.profession || '').toUpperCase() === profession
+
+        return cityOk && riskOk && professionOk
       })
     },
-    [city, risk, calcProfileCompletion, getRiskBucket]
+    [city, risk, profession, calcProfileCompletion, getRiskBucket]
   )
 
   const filtered = React.useMemo(() => applyClientFilters(rows), [rows, applyClientFilters])
@@ -287,6 +300,9 @@ export default function AdminDoctorsPage() {
       if (s) url.searchParams.set('search', s)
       else url.searchParams.delete('search')
 
+      if (profession !== 'all') url.searchParams.set('profession', profession)
+      else url.searchParams.delete('profession')
+
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
@@ -318,7 +334,7 @@ export default function AdminDoctorsPage() {
     } finally {
       setLoading(false)
     }
-  }, [router, page, limit, debouncedQ])
+  }, [router, page, limit, debouncedQ, profession])
 
   React.useEffect(() => {
     if (!isAdmin) return
@@ -345,6 +361,8 @@ export default function AdminDoctorsPage() {
       const s = debouncedQ?.trim()
       if (s) url.searchParams.set('search', s)
 
+      if (profession !== 'all') url.searchParams.set('profession', profession)
+
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
@@ -367,7 +385,7 @@ export default function AdminDoctorsPage() {
     } while (currentPage <= pages)
 
     return applyClientFilters(allItems)
-  }, [debouncedQ, applyClientFilters])
+  }, [debouncedQ, profession, applyClientFilters])
 
   const canPrev = page > 1
   const canNext = page < totalPages
@@ -387,7 +405,19 @@ export default function AdminDoctorsPage() {
         return
       }
 
-      const header = ['Name', 'Mobile', 'Email', 'RegNo', 'CityOrPin', 'CIBIL', 'Completion%', 'Risk', 'CreatedAt', 'DoctorId']
+      const header = [
+        'Profession',
+        'Name',
+        'Mobile',
+        'Email',
+        'RegNo',
+        'CityOrPin',
+        'CIBIL',
+        'Completion%',
+        'Risk',
+        'CreatedAt',
+        'DoctorId',
+      ]
 
       const lines = [
         header.join(','),
@@ -396,6 +426,7 @@ export default function AdminDoctorsPage() {
           const bucket = getRiskBucket(completion)
 
           return [
+            csvEscape(d.profession ?? ''),
             csvEscape(d.fullName),
             csvEscape(d.mobileNumber),
             csvEscape(d.email ?? ''),
@@ -445,7 +476,7 @@ export default function AdminDoctorsPage() {
 
       const payload = {
         search: debouncedQ,
-        filters: { city, risk },
+        filters: { city, risk, profession },
         total: data.length,
         items: data,
       }
@@ -476,6 +507,7 @@ export default function AdminDoctorsPage() {
       if (debouncedQ.trim()) url.searchParams.set('search', debouncedQ.trim())
       if (city.trim()) url.searchParams.set('city', city.trim())
       if (risk !== 'all') url.searchParams.set('risk', risk)
+      if (profession !== 'all') url.searchParams.set('profession', profession)
       await navigator.clipboard.writeText(url.toString())
       toast({ title: 'Link copied', status: 'success' })
     } catch {
@@ -484,7 +516,7 @@ export default function AdminDoctorsPage() {
   }
 
   return (
-    <Box minH="100vh" bg="gray.50" py={{ base: 5, md: 8 }}>
+    <Box minH="100vh" bg="gray.50" py={{ base: 5, md: 1}}>
       <Container maxW="container.2xl">
         <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" p={{ base: 4, md: 5 }}>
           <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
@@ -508,7 +540,7 @@ export default function AdminDoctorsPage() {
 
                 <Box>
                   <Heading size="md" lineHeight="1.1">
-                    All Doctors
+                    All Professionals
                   </Heading>
                   <HStack spacing={2} mt={1} flexWrap="wrap">
                     <Badge borderRadius="full" px={2.5} py={0.5} bg="blue.50" color="blue.700">
@@ -525,7 +557,7 @@ export default function AdminDoctorsPage() {
               </HStack>
             </Box>
 
-            <Tooltip label="Total doctor leads in system" hasArrow>
+            <Tooltip label="Total leads in system" hasArrow>
               <Badge
                 borderRadius="full"
                 px={5}
@@ -540,9 +572,9 @@ export default function AdminDoctorsPage() {
             </Tooltip>
           </HStack>
 
-          <Divider my={4} borderColor="gray.100" />
+          <Divider my={2} borderColor="gray.100" />
 
-          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} alignItems="end">
+          <SimpleGrid columns={{ base: 1, md: 4 }} spacing={4} alignItems="end">
             <FormControl>
               <FormLabel fontSize="sm" color="gray.600">
                 Search
@@ -592,10 +624,27 @@ export default function AdminDoctorsPage() {
                 <option value="high">High</option>
               </Select>
             </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm" color="gray.600">
+                Profession
+              </FormLabel>
+              <Select
+                value={profession}
+                onChange={(e) => setProfession(e.target.value as ProfessionFilter)}
+                borderRadius="md"
+              >
+                <option value="all">All</option>
+                <option value="DOCTOR">Doctor</option>
+                <option value="CA">CA</option>
+                <option value="LAWYER">Lawyer</option>
+                <option value="ENGINEER">Engineer</option>
+              </Select>
+            </FormControl>
           </SimpleGrid>
         </Box>
 
-        <Flex mt={4} align="center" justify="space-between" flexWrap="wrap" gap={3}>
+        <Flex mt={4} align="center" justify="space-between" flexWrap="wrap" gap={1}>
           <Menu>
             <MenuButton
               as={Button}
@@ -615,25 +664,29 @@ export default function AdminDoctorsPage() {
             </MenuList>
           </Menu>
 
-          <HStack spacing={3}>
-            <Text color="gray.600">No of records:</Text>
-            <Select
-              value={String(limit)}
-              onChange={(e) => {
-                setLimit(Number(e.target.value))
-                setPage(1)
-              }}
-              maxW="120px"
-              bg="white"
-              borderColor="gray.200"
-              borderRadius="md"
-            >
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </Select>
-          </HStack>
+      <HStack spacing={3} align="center">
+  <Text color="gray.600" whiteSpace="nowrap">
+    No of records:
+  </Text>
+
+  <Select
+    value={String(limit)}
+    onChange={(e) => {
+      setLimit(Number(e.target.value))
+      setPage(1)
+    }}
+    w="90px"
+    size="sm"
+    bg="white"
+    borderColor="gray.200"
+    borderRadius="md"
+  >
+    <option value="10">10</option>
+    <option value="20">20</option>
+    <option value="50">50</option>
+    <option value="100">100</option>
+  </Select>
+</HStack>
         </Flex>
 
         <Box mt={4} bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="hidden">
@@ -641,7 +694,7 @@ export default function AdminDoctorsPage() {
             {loading ? (
               <HStack py={10} justify="center">
                 <Spinner />
-                <Text>Loading doctors...</Text>
+                <Text>Loading records...</Text>
               </HStack>
             ) : err ? (
               <Box py={10} textAlign="center">
@@ -651,13 +704,14 @@ export default function AdminDoctorsPage() {
               </Box>
             ) : filtered.length === 0 ? (
               <Box py={10} textAlign="center">
-                <Text color="gray.500">No doctors found.</Text>
+                <Text color="gray.500">No records found.</Text>
               </Box>
             ) : (
               <TableContainer borderRadius="md" border="1px solid" borderColor="gray.100">
                 <Table size="sm" variant="simple">
                   <Thead bg="gray.50">
                     <Tr>
+                      <Th>Profession</Th>
                       <Th>Name</Th>
                       <Th>Mobile</Th>
                       <Th>Email</Th>
@@ -679,6 +733,18 @@ export default function AdminDoctorsPage() {
 
                       return (
                         <Tr key={d._id} _hover={{ bg: 'gray.50' }} transition="background 0.15s ease">
+                          <Td>
+                            <Badge
+                              borderRadius="full"
+                              px={2.5}
+                              py={0.5}
+                              colorScheme="purple"
+                              variant="subtle"
+                            >
+                              {formatProfession(d.profession)}
+                            </Badge>
+                          </Td>
+
                           <Td fontWeight="800" color="gray.800">
                             {d.fullName || '—'}
                           </Td>
@@ -716,7 +782,7 @@ export default function AdminDoctorsPage() {
                               variant="outline"
                               borderRadius="full"
                               px={4}
-                              onClick={() => router.push(`/doctor/${d._id}`)}
+                              onClick={() => router.push(`/profession/${d._id}`)}
                             >
                               Open
                             </Button>

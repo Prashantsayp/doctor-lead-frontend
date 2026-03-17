@@ -87,7 +87,7 @@ export default function UpdateDetailsPage() {
             description: Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Error',
             status: 'error',
           })
-          router.push(`/doctor/${id}`)
+          router.push(`/profession/${id}`)
           return
         }
 
@@ -140,7 +140,7 @@ export default function UpdateDetailsPage() {
 
     setSaving(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profession/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -159,7 +159,7 @@ export default function UpdateDetailsPage() {
       }
 
       toast({ title: 'Profile updated', status: 'success' })
-      router.push(`/doctor/${id}`)
+      router.push(`/profession/${id}`)
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {
@@ -170,7 +170,7 @@ export default function UpdateDetailsPage() {
   return (
     <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
       <Container maxW="container.xl">
-        <Button variant="ghost" size="sm" mb={4} onClick={() => router.push(`/doctor/${id}`)}>
+        <Button variant="ghost" size="sm" mb={4} onClick={() => router.push(`/profession/${id}`)}>
           ← Back
         </Button>
 
