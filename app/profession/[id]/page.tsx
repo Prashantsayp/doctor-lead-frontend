@@ -1,5 +1,4 @@
 'use client'
-
 import * as React from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { jwtDecode } from 'jwt-decode'
@@ -49,7 +48,7 @@ import {
   MenuItem,
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
-import { EditIcon, CheckCircleIcon, ExternalLinkIcon, CopyIcon } from '@chakra-ui/icons'
+import { EditIcon, CheckCircleIcon, ExternalLinkIcon, CopyIcon, DownloadIcon, ArrowUpIcon } from '@chakra-ui/icons'
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 
@@ -502,6 +501,29 @@ export default function DoctorProfilePage() {
   const loanTypeText = normalizeLoanType(doctor?.loanType).join(', ')
   const visibleRemarks = (remarks || []).filter((r) => !r.isDeleted)
 
+  const kycDocuments = React.useMemo(() => {
+    const docs = [
+      { key: 'pan', label: 'PAN Card', status: doctor?.panNumber ? 'Verified' : 'Pending' },
+      { key: 'aadhar', label: 'Aadhaar Card', status: doctor?.aadharNumber ? 'Verified' : 'Pending' },
+      { key: 'passport', label: 'Passport', status: (doctor as any)?.passportNumber ? 'Verified' : 'Pending' },
+    ]
+    return docs
+  }, [doctor])
+
+  const handleUploadDoc = (docKey: string, label: string) => {
+    if (!canEdit) return toast({ title: 'Access denied', status: 'warning' })
+    toast({ title: `Upload ${label}`, description: 'Upload flow not implemented in this demo.', status: 'info' })
+  }
+
+  const handleViewDoc = (docKey: string, label: string) => {
+    toast({ title: `View ${label}`, description: 'View flow not implemented in this demo.', status: 'info' })
+  }
+
+  const handleDownloadDoc = (docKey: string, label: string) => {
+    toast({ title: `Download ${label}`, description: 'Download not implemented in this demo.', status: 'info' })
+  }
+
+
   return (
     <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
       <Container maxW="7xl">
@@ -535,6 +557,22 @@ export default function DoctorProfilePage() {
                 </Skeleton>
               </Box>
             </HStack>
+
+            <Box display={{ base: 'none', md: 'flex' }} alignItems="center" gap={4}>
+              <Box mr={2}>
+                <HStack spacing={3} align="center">
+                  <Text fontSize="sm" color="gray.600" fontWeight="800">
+                    Profile Completion
+                  </Text>
+                  <Badge colorScheme={riskColor} borderRadius="full" px={3} py={1}>
+                    {riskBucket} Risk
+                  </Badge>
+                </HStack>
+                <Box mt={2}>
+                  <ProfileGauge value={profileCompletion} />
+                </Box>
+              </Box>
+            </Box>
 
             <HStack spacing={6} align="start" justify="flex-end" flexWrap="wrap">
               <Box textAlign="right">
@@ -579,606 +617,689 @@ export default function DoctorProfilePage() {
 
           <Divider my={5} borderColor="gray.100" />
 
-          <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" p={{ base: 4, md: 5 }}>
-            <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-              <Box>
-                <HStack spacing={2} mb={1} flexWrap="wrap">
-                  <Text fontSize="sm" color="gray.600" fontWeight="800">
-                    Profile Completion
+          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5} mt={6}>
+            <KpiCard
+              title="Risk Bucket"
+              value={riskBucket}
+              helper={`FOIR: ${Math.round(FOIR * 100)}% based on risk`}
+              badge={{ label: riskBucket, colorScheme: riskColor }}
+            />
+            <KpiCard
+              title="Eligible EMI (Est.)"
+              value={income > 0 ? formatINR(Math.round(eligibleEmi)) : '₹N/A'}
+              helper={income > 0 ? `Income × FOIR (${Math.round(FOIR * 100)}%) - Existing EMI` : 'Add income to compute'}
+            />
+            <KpiCard
+              title="Max Loan Amount (Est.)"
+              value={income > 0 && eligibleEmi > 0 ? formatINR(Math.round(maxLoanAmount)) : '₹N/A'}
+              helper={income > 0 && eligibleEmi > 0 ? `@ ${DEFAULT_RATE}% for ${DEFAULT_TENURE} months` : 'Add income & EMI to compute'}
+            />
+          </SimpleGrid>
+
+          <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={5} mt={6}>
+            <Box
+              gridColumn={{ base: 'auto', lg: 'span 2' }}
+              bg="white"
+              border="1px solid"
+              borderColor="gray.200"
+              borderRadius="2xl"
+              boxShadow="sm"
+              p={{ base: 4, md: 6 }}
+            >
+              <HStack justify="space-between" mb={2}>
+                <Box>
+                  <Heading size="sm">Financial Brain Insights</Heading>
+                  <Text fontSize="sm" color="gray.500">
+                    Already captured and matched data points
                   </Text>
-                  <Badge colorScheme={riskColor} borderRadius="full" px={3} py={1}>
-                    {riskBucket} Risk
-                  </Badge>
-                </HStack>
-
-                <Text fontSize="2xl" fontWeight="900" color="gray.800" lineHeight="1">
-                  {profileCompletion}%
-                </Text>
-
-                <Text fontSize="sm" color="gray.500" mt={1}>
-                  Complete profile for better eligibility & matching
-                </Text>
-              </Box>
-
-              <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
-            </HStack>
-
-            <HStack mt={4} spacing={1}>
-              {Array.from({ length: 10 }).map((_, i) => {
-                const filled = Math.round((profileCompletion / 100) * 10)
-                const isOn = i < filled
-                return (
-                  <Box
-                    key={i}
-                    h="10px"
-                    flex="1"
-                    borderRadius="full"
-                    bg={isOn ? 'blue.500' : 'gray.200'}
-                    opacity={isOn ? 1 : 0.7}
-                  />
-                )
-              })}
-            </HStack>
-
-            <Progress mt={3} value={profileCompletion} borderRadius="full" size="sm" />
-          </Box>
-        </Box>
-
-        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5} mt={6}>
-          <KpiCard
-            title="Risk Bucket"
-            value={riskBucket}
-            helper={`FOIR: ${Math.round(FOIR * 100)}% based on risk`}
-            badge={{ label: riskBucket, colorScheme: riskColor }}
-          />
-          <KpiCard
-            title="Eligible EMI (Est.)"
-            value={income > 0 ? formatINR(Math.round(eligibleEmi)) : '₹N/A'}
-            helper={income > 0 ? `Income × FOIR (${Math.round(FOIR * 100)}%) - Existing EMI` : 'Add income to compute'}
-          />
-          <KpiCard
-            title="Max Loan Amount (Est.)"
-            value={income > 0 && eligibleEmi > 0 ? formatINR(Math.round(maxLoanAmount)) : '₹N/A'}
-            helper={income > 0 && eligibleEmi > 0 ? `@ ${DEFAULT_RATE}% for ${DEFAULT_TENURE} months` : 'Add income & EMI to compute'}
-          />
-        </SimpleGrid>
-
-        <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={5} mt={6}>
-          <Box
-            gridColumn={{ base: 'auto', lg: 'span 2' }}
-            bg="white"
-            border="1px solid"
-            borderColor="gray.200"
-            borderRadius="2xl"
-            boxShadow="sm"
-            p={{ base: 4, md: 6 }}
-          >
-            <HStack justify="space-between" mb={2}>
-              <Box>
-                <Heading size="sm">Financial Brain Insights</Heading>
-                <Text fontSize="sm" color="gray.500">
-                  Already captured and matched data points
-                </Text>
-              </Box>
-              <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
-            </HStack>
-
-            <Divider my={4} borderColor="gray.100" />
-
-            <Tabs variant="soft-rounded" colorScheme="blue">
-              <TabList flexWrap="wrap" gap={2}>
-                <Tab>Basic</Tab>
-                <Tab>Income</Tab>
-                <Tab>Obligations</Tab>
-                <Tab>Assets</Tab>
-                <Tab>Credit</Tab>
-              </TabList>
-
-              <TabPanels mt={4}>
-                <TabPanel px={0}>
-                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
-                    <CapturedRow label="Full Name" value={valueOrDash(doctor?.fullName)} />
-                    <CapturedRow label="Mobile" value={valueOrDash(doctor?.mobileNumber)} />
-                    <CapturedRow label="Email" value={valueOrDash(doctor?.email)} />
-                    <CapturedRow label="City / Pin" value={valueOrDash(doctor?.cityOrPinCode)} />
-                    <CapturedRow label="Registration No" value={valueOrDash(doctor?.registrationNumber)} />
-                    <CapturedRow label="PAN" value={valueOrDash(doctor?.panNumber)} />
-                    <CapturedRow label="Aadhar" value={valueOrDash(doctor?.aadharNumber)} />
-                    <CapturedRow
-                      label="Years of Practice"
-                      value={doctor?.yearsOfPractice != null ? String(doctor.yearsOfPractice) : '—'}
-                    />
-                    <CapturedRow label="Qualification" value={valueOrDash((doctor?.qualification || []).join(', '))} />
-                    <CapturedRow label="Practice Type" value={valueOrDash((doctor?.practiceType || []).join(', '))} hideDivider />
-                  </Box>
-                </TabPanel>
-
-                <TabPanel px={0}>
-                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
-                    <CapturedRow label="Monthly Gross Income" value={formatINR(doctor?.monthlyGrossIncome ?? null)} />
-                    <CapturedRow label="Monthly Net Income" value={formatINR(doctor?.monthlyNetIncome ?? null)} />
-                    <CapturedRow label="Other Income Sources" value={formatINR(doctor?.otherIncomeSources ?? null)} hideDivider />
-                  </Box>
-                </TabPanel>
-
-                <TabPanel px={0}>
-                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
-                    <CapturedRow label="Monthly EMI" value={formatINR(doctor?.monthlyEmi ?? null)} />
-                    <CapturedRow label="Active Loans" value={doctor?.activeLoans != null ? String(doctor.activeLoans) : '—'} />
-                    <CapturedRow label="Loan Type(s)" value={valueOrDash(loanTypeText)} />
-                    <CapturedRow
-                      label="Has Overdue"
-                      value={doctor?.hasOverdue ? 'Yes' : 'No'}
-                      valueColor={doctor?.hasOverdue ? 'red.500' : 'green.600'}
-                      hideDivider
-                    />
-                  </Box>
-                </TabPanel>
-
-                <TabPanel px={0}>
-                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
-                    <CapturedRow label="Has Property" value={doctor?.hasProperty ? 'Yes' : 'No'} />
-                    <CapturedRow label="Property Value" value={formatINR(doctor?.propertyValue ?? null)} />
-                    <CapturedRow label="Medical Equipment Value" value={formatINR(doctor?.medicalEquipmentValue ?? null)} hideDivider />
-                  </Box>
-                </TabPanel>
-
-                <TabPanel px={0}>
-                  <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
-                    <CapturedRow
-                      label="CIBIL Score"
-                      value={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? String(doctor.cibilScore) : 'Pending'}
-                      valueColor={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? 'gray.800' : 'red.500'}
-                      hideDivider
-                    />
-                  </Box>
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
-          </Box>
-
-          <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={{ base: 4, md: 6 }}>
-            <Heading size="sm">Interaction Log</Heading>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Comments with time & history
-            </Text>
-
-            <Divider my={4} borderColor="gray.100" />
-
-            <Box>
-              <Textarea
-                value={remarkText}
-                onChange={(e) => setRemarkText(e.target.value)}
-                placeholder="Write a comment..."
-                rows={3}
-                borderRadius="xl"
-              />
-              <HStack justify="space-between" mt={2}>
-                <Text fontSize="xs" color="gray.500">
-                  {remarkText.trim().length}/500
-                </Text>
-                <Button
-                  size="sm"
-                  colorScheme="blue"
-                  onClick={addRemark}
-                  isLoading={savingRemark}
-                  loadingText="Saving..."
-                  borderRadius="lg"
-                  isDisabled={!canEdit}
-                >
-                  Add Comment
-                </Button>
+                </Box>
               </HStack>
+
+              <Divider my={4} borderColor="gray.100" />
+
+              <Tabs variant="soft-rounded" colorScheme="blue">
+                <TabList flexWrap="wrap" gap={2}>
+                  <Tab>Basic</Tab>
+                  <Tab>Income</Tab>
+                  <Tab>Obligations</Tab>
+                  <Tab>Assets</Tab>
+                  <Tab>Credit</Tab>
+                  <Tab>KYC</Tab>
+                </TabList>
+
+                <TabPanels mt={4}>
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                      <CapturedRow label="Full Name" value={valueOrDash(doctor?.fullName)} />
+                      <CapturedRow label="Mobile" value={valueOrDash(doctor?.mobileNumber)} />
+                      <CapturedRow label="Email" value={valueOrDash(doctor?.email)} />
+                      <CapturedRow label="City / Pin" value={valueOrDash(doctor?.cityOrPinCode)} />
+                      <CapturedRow label="Registration No" value={valueOrDash(doctor?.registrationNumber)} />
+                      <CapturedRow label="PAN" value={valueOrDash(doctor?.panNumber)} />
+                      <CapturedRow label="Aadhar" value={valueOrDash(doctor?.aadharNumber)} />
+                      <CapturedRow
+                        label="Years of Practice"
+                        value={doctor?.yearsOfPractice != null ? String(doctor.yearsOfPractice) : '—'}
+                      />
+                      <CapturedRow label="Qualification" value={valueOrDash((doctor?.qualification || []).join(', '))} />
+                      <CapturedRow label="Practice Type" value={valueOrDash((doctor?.practiceType || []).join(', '))} hideDivider />
+                    </Box>
+                  </TabPanel>
+
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                      <CapturedRow label="Monthly Gross Income" value={formatINR(doctor?.monthlyGrossIncome ?? null)} />
+                      <CapturedRow label="Monthly Net Income" value={formatINR(doctor?.monthlyNetIncome ?? null)} />
+                      <CapturedRow label="Other Income Sources" value={formatINR(doctor?.otherIncomeSources ?? null)} hideDivider />
+                    </Box>
+                  </TabPanel>
+
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                      <CapturedRow label="Monthly EMI" value={formatINR(doctor?.monthlyEmi ?? null)} />
+                      <CapturedRow label="Active Loans" value={doctor?.activeLoans != null ? String(doctor.activeLoans) : '—'} />
+                      <CapturedRow label="Loan Type(s)" value={valueOrDash(loanTypeText)} />
+                      <CapturedRow
+                        label="Has Overdue"
+                        value={doctor?.hasOverdue ? 'Yes' : 'No'}
+                        valueColor={doctor?.hasOverdue ? 'red.500' : 'green.600'}
+                        hideDivider
+                      />
+                    </Box>
+                  </TabPanel>
+
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                      <CapturedRow label="Has Property" value={doctor?.hasProperty ? 'Yes' : 'No'} />
+                      <CapturedRow label="Property Value" value={formatINR(doctor?.propertyValue ?? null)} />
+                      <CapturedRow label="Medical Equipment Value" value={formatINR(doctor?.medicalEquipmentValue ?? null)} hideDivider />
+                    </Box>
+                  </TabPanel>
+
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden">
+                      <CapturedRow
+                        label="CIBIL Score"
+                        value={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? String(doctor.cibilScore) : 'Pending'}
+                        valueColor={doctor?.cibilScore !== undefined && doctor?.cibilScore !== null ? 'gray.800' : 'red.500'}
+                        hideDivider
+                      />
+                    </Box>
+                  </TabPanel>
+
+                  <TabPanel px={0}>
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden" p={3}>
+                      <Text fontSize="sm" color="gray.600" mb={3}>
+                        KYC documents and statuses
+                      </Text>
+
+                      <Stack spacing={2}>
+                        {kycDocuments.map((doc) => {
+                          const color = doc.status === 'Verified' ? 'green' : doc.status === 'Rejected' ? 'red' : 'yellow'
+                          return (
+                            <HStack key={doc.key} justify="space-between" bg="white" p={3} borderRadius="md" border="1px solid" borderColor="gray.100">
+                              <HStack spacing={3} align="center">
+                                <Text fontSize="sm" color="gray.700" minW="160px">
+                                  {doc.label}
+                                </Text>
+                                <Badge colorScheme={color} borderRadius="full" px={3} py={1}>
+                                  {doc.status}
+                                </Badge>
+                              </HStack>
+
+                              <HStack spacing={2}>
+                                <Tooltip label="Upload" hasArrow>
+                                  <IconButton
+                                    aria-label={`Upload ${doc.label}`}
+                                    icon={<ArrowUpIcon />}
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleUploadDoc(doc.key, doc.label)}
+                                    isDisabled={!canEdit}
+                                  />
+                                </Tooltip>
+
+                                <Tooltip label="View" hasArrow>
+                                  <IconButton
+                                    aria-label={`View ${doc.label}`}
+                                    icon={<ExternalLinkIcon />}
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleViewDoc(doc.key, doc.label)}
+                                  />
+                                </Tooltip>
+
+                                <Tooltip label="Download" hasArrow>
+                                  <IconButton
+                                    aria-label={`Download ${doc.label}`}
+                                    icon={<DownloadIcon />}
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleDownloadDoc(doc.key, doc.label)}
+                                  />
+                                </Tooltip>
+                              </HStack>
+                            </HStack>
+                          )
+                        })}
+                      </Stack>
+                    </Box>
+                  </TabPanel>
+                </TabPanels>
+              </Tabs>
             </Box>
 
-            <Divider my={4} borderColor="gray.100" />
+            <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={{ base: 4, md: 6 }}>
+              <Heading size="sm">Interaction Log</Heading>
+              <Text fontSize="sm" color="gray.500" mt={1}>
+                Comments with time & history
+              </Text>
 
-            {loading ? (
-              <Stack spacing={3}>
-                <Skeleton height="14px" />
-                <Skeleton height="14px" />
-                <Skeleton height="14px" />
-              </Stack>
-            ) : visibleRemarks.length ? (
-              <Stack spacing={3}>
-                {visibleRemarks.map((it) => {
-                  const isEditing = editingRemarkId === it.id
-                  const by = it.createdBy || 'User'
-                  const time = formatDateTime(it.updatedAt || it.createdAt)
-                  const editedBy = it.updatedBy || it.createdBy
+              <Divider my={4} borderColor="gray.100" />
 
-                  return (
-                    <Box key={it.id} bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p={4}>
-                      <HStack justify="space-between" align="start">
-                        <HStack spacing={3} align="start">
-                          <Avatar size="sm" name={by} />
-                          <Box>
-                            <HStack spacing={2} align="center" flexWrap="wrap">
-                              <Text fontSize="sm" fontWeight="800" color="gray.800">
-                                {by}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500">
-                                • {time}
-                              </Text>
-
-                              {it.updatedAt ? (
-                                <Tooltip label={editedBy ? `Edited by ${editedBy}` : 'Edited'} hasArrow>
-                                  <Badge variant="subtle" colorScheme="purple" borderRadius="full">
-                                    Edited
-                                  </Badge>
-                                </Tooltip>
-                              ) : null}
-                            </HStack>
-
-                            {!isEditing ? (
-                              <Text mt={2} fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
-                                {it.text}
-                              </Text>
-                            ) : (
-                              <Box mt={2}>
-                                <Textarea value={editRemarkText} onChange={(e) => setEditRemarkText(e.target.value)} rows={3} borderRadius="xl" />
-                                <HStack justify="space-between" mt={2}>
-                                  <Text fontSize="xs" color="gray.500">
-                                    {editRemarkText.trim().length}/500
-                                  </Text>
-                                  <HStack>
-                                    <Button size="sm" variant="ghost" onClick={cancelEditRemark} borderRadius="lg" isDisabled={savingRemark}>
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      colorScheme="blue"
-                                      onClick={updateRemark}
-                                      isLoading={savingRemark}
-                                      loadingText="Saving..."
-                                      borderRadius="lg"
-                                    >
-                                      Save
-                                    </Button>
-                                  </HStack>
-                                </HStack>
-                              </Box>
-                            )}
-                          </Box>
-                        </HStack>
-
-                        {canEdit ? (
-                          <HStack spacing={1}>
-                            <Tooltip label="Edit" hasArrow>
-                              <IconButton
-                                aria-label="Edit comment"
-                                size="sm"
-                                variant="ghost"
-                                icon={<EditIcon />}
-                                onClick={() => startEditRemark(it)}
-                                isDisabled={savingRemark || isEditing}
-                              />
-                            </Tooltip>
-                            <Tooltip label="Delete" hasArrow>
-                              <IconButton
-                                aria-label="Delete comment"
-                                size="sm"
-                                variant="ghost"
-                                icon={<Text fontSize="lg">🗑️</Text>}
-                                onClick={() => deleteRemark(it.id)}
-                                isDisabled={savingRemark || isEditing}
-                              />
-                            </Tooltip>
-                          </HStack>
-                        ) : null}
-                      </HStack>
-                    </Box>
-                  )
-                })}
-              </Stack>
-            ) : (
-              <Box mt={2} textAlign="center" color="gray.400">
-                <Text fontSize="sm">No comments yet.</Text>
+              <Box>
+                <Textarea
+                  value={remarkText}
+                  onChange={(e) => setRemarkText(e.target.value)}
+                  placeholder="Write a comment..."
+                  rows={3}
+                  borderRadius="xl"
+                />
+                <HStack justify="space-between" mt={2}>
+                  <Text fontSize="xs" color="gray.500">
+                    {remarkText.trim().length}/500
+                  </Text>
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    onClick={addRemark}
+                    isLoading={savingRemark}
+                    loadingText="Saving..."
+                    borderRadius="lg"
+                    isDisabled={!canEdit}
+                  >
+                    Add Comment
+                  </Button>
+                </HStack>
               </Box>
-            )}
-          </Box>
-        </SimpleGrid>
-      </Container>
 
-      {canEdit ? (
-        <Modal isOpen={isUpdateOpen} onClose={closeUpdate} size="xl" isCentered scrollBehavior="inside">
-          <ModalOverlay />
-          <ModalContent borderRadius="2xl">
-            <ModalHeader>Update Doctor Lead</ModalHeader>
-            <ModalCloseButton />
+              <Divider my={4} borderColor="gray.100" />
 
-            <ModalBody>
-              <HStack bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p="6px" spacing={2} mb={4} flexWrap="wrap">
-                <SmallTab active={updateTab === 'basic'} onClick={() => setUpdateTab('basic')}>
-                  Basic
-                </SmallTab>
-                <SmallTab active={updateTab === 'income'} onClick={() => setUpdateTab('income')}>
-                  Income
-                </SmallTab>
-                <SmallTab active={updateTab === 'obligations'} onClick={() => setUpdateTab('obligations')}>
-                  Obligations
-                </SmallTab>
-                <SmallTab active={updateTab === 'assets'} onClick={() => setUpdateTab('assets')}>
-                  Assets
-                </SmallTab>
-                <SmallTab active={updateTab === 'credit'} onClick={() => setUpdateTab('credit')}>
-                  Credit
-                </SmallTab>
-              </HStack>
-
-              {updateTab === 'basic' ? (
-                <Stack spacing={4}>
-                  <FormControl>
-                    <FormLabel>Full Name</FormLabel>
-                    <Input value={form.fullName ?? ''} onChange={(e) => setForm((p) => ({ ...p, fullName: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Mobile</FormLabel>
-                    <Input value={form.mobileNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, mobileNumber: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Email</FormLabel>
-                    <Input value={form.email ?? ''} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>City / Pin</FormLabel>
-                    <Input value={form.cityOrPinCode ?? ''} onChange={(e) => setForm((p) => ({ ...p, cityOrPinCode: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Registration Number</FormLabel>
-                    <Input value={form.registrationNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>PAN</FormLabel>
-                    <Input value={form.panNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, panNumber: e.target.value.toUpperCase() }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Aadhar</FormLabel>
-                    <Input value={form.aadharNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, aadharNumber: e.target.value }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Years of Practice</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.yearsOfPractice ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, yearsOfPractice: e.target.value === '' ? null : Number(e.target.value) }))}
-                    />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Qualification</FormLabel>
-                    <HStack>
-                      <Input
-                        value={form._qualificationDraft ?? ''}
-                        onChange={(e) => setForm((p) => ({ ...p, _qualificationDraft: e.target.value }))}
-                        placeholder="Type & Add (e.g., MBBS, MD)"
-                      />
-                      <Button
-                        onClick={() => {
-                          const draft = String(form._qualificationDraft ?? '').trim()
-                          if (!draft) return
-                          setForm((p) => ({
-                            ...p,
-                            qualification: Array.from(new Set([...(p.qualification || []), draft])),
-                            _qualificationDraft: '',
-                          }))
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </HStack>
-
-                    <HStack mt={3} spacing={2} flexWrap="wrap">
-                      {(form.qualification || []).length ? (
-                        (form.qualification || []).map((t) => (
-                          <Tag key={t} borderRadius="full">
-                            <TagLabel>{t}</TagLabel>
-                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, qualification: (p.qualification || []).filter((x) => x !== t) }))} />
-                          </Tag>
-                        ))
-                      ) : (
-                        <Text fontSize="sm" color="gray.500">
-                          No qualification added.
-                        </Text>
-                      )}
-                    </HStack>
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Practice Type</FormLabel>
-                    <HStack>
-                      <Input
-                        value={form._practiceTypeDraft ?? ''}
-                        onChange={(e) => setForm((p) => ({ ...p, _practiceTypeDraft: e.target.value }))}
-                        placeholder="Type & Add (e.g., Clinic, Hospital)"
-                      />
-                      <Button
-                        onClick={() => {
-                          const draft = String(form._practiceTypeDraft ?? '').trim()
-                          if (!draft) return
-                          setForm((p) => ({
-                            ...p,
-                            practiceType: Array.from(new Set([...(p.practiceType || []), draft])),
-                            _practiceTypeDraft: '',
-                          }))
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </HStack>
-
-                    <HStack mt={3} spacing={2} flexWrap="wrap">
-                      {(form.practiceType || []).length ? (
-                        (form.practiceType || []).map((t) => (
-                          <Tag key={t} borderRadius="full">
-                            <TagLabel>{t}</TagLabel>
-                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, practiceType: (p.practiceType || []).filter((x) => x !== t) }))} />
-                          </Tag>
-                        ))
-                      ) : (
-                        <Text fontSize="sm" color="gray.500">
-                          No practice type added.
-                        </Text>
-                      )}
-                    </HStack>
-                  </FormControl>
+              {loading ? (
+                <Stack spacing={3}>
+                  <Skeleton height="14px" />
+                  <Skeleton height="14px" />
+                  <Skeleton height="14px" />
                 </Stack>
-              ) : updateTab === 'income' ? (
-                <Stack spacing={4}>
-                  <FormControl>
-                    <FormLabel>Monthly Gross Income</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.monthlyGrossIncome ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, monthlyGrossIncome: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
+              ) : visibleRemarks.length ? (
+                <Stack spacing={3}>
+                  {visibleRemarks.map((it) => {
+                    const isEditing = editingRemarkId === it.id
+                    const by = it.createdBy || 'User'
+                    const time = formatDateTime(it.updatedAt || it.createdAt)
+                    const editedBy = it.updatedBy || it.createdBy
 
-                  <FormControl>
-                    <FormLabel>Monthly Net Income</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.monthlyNetIncome ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, monthlyNetIncome: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
+                    return (
+                      <Box key={it.id} bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p={4}>
+                        <HStack justify="space-between" align="start">
+                          <HStack spacing={3} align="start">
+                            <Avatar size="sm" name={by} />
+                            <Box>
+                              <HStack spacing={2} align="center" flexWrap="wrap">
+                                <Text fontSize="sm" fontWeight="800" color="gray.800">
+                                  {by}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  • {time}
+                                </Text>
 
-                  <FormControl>
-                    <FormLabel>Other Income Sources</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.otherIncomeSources ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, otherIncomeSources: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
-                </Stack>
-              ) : updateTab === 'obligations' ? (
-                <Stack spacing={4}>
-                  <FormControl>
-                    <FormLabel>Monthly EMI</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.monthlyEmi ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, monthlyEmi: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
+                                {it.updatedAt ? (
+                                  <Tooltip label={editedBy ? `Edited by ${editedBy}` : 'Edited'} hasArrow>
+                                    <Badge variant="subtle" colorScheme="purple" borderRadius="full">
+                                      Edited
+                                    </Badge>
+                                  </Tooltip>
+                                ) : null}
+                              </HStack>
 
-                  <FormControl>
-                    <FormLabel>Active Loans</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.activeLoans ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, activeLoans: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
+                              {!isEditing ? (
+                                <Text mt={2} fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
+                                  {it.text}
+                                </Text>
+                              ) : (
+                                <Box mt={2}>
+                                  <Textarea value={editRemarkText} onChange={(e) => setEditRemarkText(e.target.value)} rows={3} borderRadius="xl" />
+                                  <HStack justify="space-between" mt={2}>
+                                    <Text fontSize="xs" color="gray.500">
+                                      {editRemarkText.trim().length}/500
+                                    </Text>
+                                    <HStack>
+                                      <Button size="sm" variant="ghost" onClick={cancelEditRemark} borderRadius="lg" isDisabled={savingRemark}>
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="blue"
+                                        onClick={updateRemark}
+                                        isLoading={savingRemark}
+                                        loadingText="Saving..."
+                                        borderRadius="lg"
+                                      >
+                                        Save
+                                      </Button>
+                                    </HStack>
+                                  </HStack>
+                                </Box>
+                              )}
+                            </Box>
+                          </HStack>
 
-                  <FormControl>
-                    <FormLabel>Loan Type(s)</FormLabel>
-
-                    <HStack>
-                      <Input
-                        value={form._loanTypeDraft ?? ''}
-                        onChange={(e) => setForm((p) => ({ ...p, _loanTypeDraft: e.target.value }))}
-                        placeholder="Type & click Add (e.g., Home, Equipment)"
-                      />
-                      <Button
-                        onClick={() => {
-                          const draft = String(form._loanTypeDraft ?? '').trim()
-                          if (!draft) return
-                          setForm((p) => ({
-                            ...p,
-                            loanType: Array.from(new Set([...(p.loanType || []), draft])),
-                            _loanTypeDraft: '',
-                          }))
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </HStack>
-
-                    <HStack mt={3} spacing={2} flexWrap="wrap">
-                      {(form.loanType || []).length ? (
-                        (form.loanType || []).map((t) => (
-                          <Tag key={t} borderRadius="full">
-                            <TagLabel>{t}</TagLabel>
-                            <TagCloseButton onClick={() => setForm((p) => ({ ...p, loanType: (p.loanType || []).filter((x) => x !== t) }))} />
-                          </Tag>
-                        ))
-                      ) : (
-                        <Text fontSize="sm" color="gray.500">
-                          No loan type added.
-                        </Text>
-                      )}
-                    </HStack>
-                  </FormControl>
-
-                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                    <FormLabel mb="0">Has Overdue?</FormLabel>
-                    <Switch isChecked={Boolean(form.hasOverdue)} onChange={(e) => setForm((p) => ({ ...p, hasOverdue: e.target.checked }))} />
-                  </FormControl>
-                </Stack>
-              ) : updateTab === 'assets' ? (
-                <Stack spacing={4}>
-                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                    <FormLabel mb="0">Has Property?</FormLabel>
-                    <Switch isChecked={Boolean(form.hasProperty)} onChange={(e) => setForm((p) => ({ ...p, hasProperty: e.target.checked }))} />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Property Value</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.propertyValue ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, propertyValue: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Medical Equipment Value</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.medicalEquipmentValue ?? ''}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, medicalEquipmentValue: e.target.value === '' ? '' : Number(e.target.value) }))
-                      }
-                    />
-                  </FormControl>
+                          {canEdit ? (
+                            <HStack spacing={1}>
+                              <Tooltip label="Edit" hasArrow>
+                                <IconButton
+                                  aria-label="Edit comment"
+                                  size="sm"
+                                  variant="ghost"
+                                  icon={<EditIcon />}
+                                  onClick={() => startEditRemark(it)}
+                                  isDisabled={savingRemark || isEditing}
+                                />
+                              </Tooltip>
+                              <Tooltip label="Delete" hasArrow>
+                                <IconButton
+                                  aria-label="Delete comment"
+                                  size="sm"
+                                  variant="ghost"
+                                  icon={<Text fontSize="lg">🗑️</Text>}
+                                  onClick={() => deleteRemark(it.id)}
+                                  isDisabled={savingRemark || isEditing}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          ) : null}
+                        </HStack>
+                      </Box>
+                    )
+                  })}
                 </Stack>
               ) : (
-                <Stack spacing={4}>
-                  <FormControl>
-                    <FormLabel>CIBIL Score</FormLabel>
-                    <Input
-                      type="number"
-                      value={form.cibilScore ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, cibilScore: e.target.value === '' ? null : Number(e.target.value) }))}
-                      placeholder="0 - 900"
-                    />
-                  </FormControl>
-                </Stack>
+                <Box mt={2} textAlign="center" color="gray.400">
+                  <Text fontSize="sm">No comments yet.</Text>
+                </Box>
               )}
-            </ModalBody>
+            </Box>
+          </SimpleGrid>
+        </Box>
 
-            <ModalFooter>
-              <HStack w="100%" justify="space-between">
-                <Button variant="ghost" onClick={closeUpdate} isDisabled={savingUpdate}>
-                  Cancel
-                </Button>
-                <Button colorScheme="blue" onClick={saveUpdate} isLoading={savingUpdate} loadingText="Saving...">
-                  Save & Update
-                </Button>
-              </HStack>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      ) : null}
+        {canEdit ? (
+          <Modal isOpen={isUpdateOpen} onClose={closeUpdate} size="xl" isCentered scrollBehavior="inside">
+            <ModalOverlay />
+            <ModalContent borderRadius="2xl">
+              <ModalHeader>Update Doctor Lead</ModalHeader>
+              <ModalCloseButton />
+
+              <ModalBody>
+                <HStack bg="gray.50" border="1px solid" borderColor="gray.200" borderRadius="xl" p="6px" spacing={2} mb={4} flexWrap="wrap">
+                  <SmallTab active={updateTab === 'basic'} onClick={() => setUpdateTab('basic')}>
+                    Basic
+                  </SmallTab>
+                  <SmallTab active={updateTab === 'income'} onClick={() => setUpdateTab('income')}>
+                    Income
+                  </SmallTab>
+                  <SmallTab active={updateTab === 'obligations'} onClick={() => setUpdateTab('obligations')}>
+                    Obligations
+                  </SmallTab>
+                  <SmallTab active={updateTab === 'assets'} onClick={() => setUpdateTab('assets')}>
+                    Assets
+                  </SmallTab>
+                  <SmallTab active={updateTab === 'credit'} onClick={() => setUpdateTab('credit')}>
+                    Credit
+                  </SmallTab>
+                </HStack>
+
+                {updateTab === 'basic' ? (
+                  <Stack spacing={4}>
+                    <FormControl>
+                      <FormLabel>Full Name</FormLabel>
+                      <Input value={form.fullName ?? ''} onChange={(e) => setForm((p) => ({ ...p, fullName: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Mobile</FormLabel>
+                      <Input value={form.mobileNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, mobileNumber: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Email</FormLabel>
+                      <Input value={form.email ?? ''} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>City / Pin</FormLabel>
+                      <Input value={form.cityOrPinCode ?? ''} onChange={(e) => setForm((p) => ({ ...p, cityOrPinCode: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Registration Number</FormLabel>
+                      <Input value={form.registrationNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>PAN</FormLabel>
+                      <Input value={form.panNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, panNumber: e.target.value.toUpperCase() }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Aadhar</FormLabel>
+                      <Input value={form.aadharNumber ?? ''} onChange={(e) => setForm((p) => ({ ...p, aadharNumber: e.target.value }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Years of Practice</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.yearsOfPractice ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, yearsOfPractice: e.target.value === '' ? null : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Qualification</FormLabel>
+                      <HStack>
+                        <Input
+                          value={form._qualificationDraft ?? ''}
+                          onChange={(e) => setForm((p) => ({ ...p, _qualificationDraft: e.target.value }))}
+                          placeholder="Type & Add (e.g., MBBS, MD)"
+                        />
+                        <Button
+                          onClick={() => {
+                            const draft = String(form._qualificationDraft ?? '').trim()
+                            if (!draft) return
+                            setForm((p) => ({
+                              ...p,
+                              qualification: Array.from(new Set([...(p.qualification || []), draft])),
+                              _qualificationDraft: '',
+                            }))
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </HStack>
+
+                      <HStack mt={3} spacing={2} flexWrap="wrap">
+                        {(form.qualification || []).length ? (
+                          (form.qualification || []).map((t) => (
+                            <Tag key={t} borderRadius="full">
+                              <TagLabel>{t}</TagLabel>
+                              <TagCloseButton onClick={() => setForm((p) => ({ ...p, qualification: (p.qualification || []).filter((x) => x !== t) }))} />
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text fontSize="sm" color="gray.500">
+                            No qualification added.
+                          </Text>
+                        )}
+                      </HStack>
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Practice Type</FormLabel>
+                      <HStack>
+                        <Input
+                          value={form._practiceTypeDraft ?? ''}
+                          onChange={(e) => setForm((p) => ({ ...p, _practiceTypeDraft: e.target.value }))}
+                          placeholder="Type & Add (e.g., Clinic, Hospital)"
+                        />
+                        <Button
+                          onClick={() => {
+                            const draft = String(form._practiceTypeDraft ?? '').trim()
+                            if (!draft) return
+                            setForm((p) => ({
+                              ...p,
+                              practiceType: Array.from(new Set([...(p.practiceType || []), draft])),
+                              _practiceTypeDraft: '',
+                            }))
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </HStack>
+
+                      <HStack mt={3} spacing={2} flexWrap="wrap">
+                        {(form.practiceType || []).length ? (
+                          (form.practiceType || []).map((t) => (
+                            <Tag key={t} borderRadius="full">
+                              <TagLabel>{t}</TagLabel>
+                              <TagCloseButton onClick={() => setForm((p) => ({ ...p, practiceType: (p.practiceType || []).filter((x) => x !== t) }))} />
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text fontSize="sm" color="gray.500">
+                            No practice type added.
+                          </Text>
+                        )}
+                      </HStack>
+                    </FormControl>
+                  </Stack>
+                ) : updateTab === 'income' ? (
+                  <Stack spacing={4}>
+                    <FormControl>
+                      <FormLabel>Monthly Gross Income</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.monthlyGrossIncome ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, monthlyGrossIncome: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Monthly Net Income</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.monthlyNetIncome ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, monthlyNetIncome: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Other Income Sources</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.otherIncomeSources ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, otherIncomeSources: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+                  </Stack>
+                ) : updateTab === 'obligations' ? (
+                  <Stack spacing={4}>
+                    <FormControl>
+                      <FormLabel>Monthly EMI</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.monthlyEmi ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, monthlyEmi: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Active Loans</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.activeLoans ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, activeLoans: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Loan Type(s)</FormLabel>
+
+                      <HStack>
+                        <Input
+                          value={form._loanTypeDraft ?? ''}
+                          onChange={(e) => setForm((p) => ({ ...p, _loanTypeDraft: e.target.value }))}
+                          placeholder="Type & click Add (e.g., Home, Equipment)"
+                        />
+                        <Button
+                          onClick={() => {
+                            const draft = String(form._loanTypeDraft ?? '').trim()
+                            if (!draft) return
+                            setForm((p) => ({
+                              ...p,
+                              loanType: Array.from(new Set([...(p.loanType || []), draft])),
+                              _loanTypeDraft: '',
+                            }))
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </HStack>
+
+                      <HStack mt={3} spacing={2} flexWrap="wrap">
+                        {(form.loanType || []).length ? (
+                          (form.loanType || []).map((t) => (
+                            <Tag key={t} borderRadius="full">
+                              <TagLabel>{t}</TagLabel>
+                              <TagCloseButton onClick={() => setForm((p) => ({ ...p, loanType: (p.loanType || []).filter((x) => x !== t) }))} />
+                            </Tag>
+                          ))
+                        ) : (
+                          <Text fontSize="sm" color="gray.500">
+                            No loan type added.
+                          </Text>
+                        )}
+                      </HStack>
+                    </FormControl>
+
+                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                      <FormLabel mb="0">Has Overdue?</FormLabel>
+                      <Switch isChecked={Boolean(form.hasOverdue)} onChange={(e) => setForm((p) => ({ ...p, hasOverdue: e.target.checked }))} />
+                    </FormControl>
+                  </Stack>
+                ) : updateTab === 'assets' ? (
+                  <Stack spacing={4}>
+                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                      <FormLabel mb="0">Has Property?</FormLabel>
+                      <Switch isChecked={Boolean(form.hasProperty)} onChange={(e) => setForm((p) => ({ ...p, hasProperty: e.target.checked }))} />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Property Value</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.propertyValue ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, propertyValue: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel>Medical Equipment Value</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.medicalEquipmentValue ?? ''}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, medicalEquipmentValue: e.target.value === '' ? '' : Number(e.target.value) }))
+                        }
+                      />
+                    </FormControl>
+                  </Stack>
+                ) : (
+                  <Stack spacing={4}>
+                    <FormControl>
+                      <FormLabel>CIBIL Score</FormLabel>
+                      <Input
+                        type="number"
+                        value={form.cibilScore ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, cibilScore: e.target.value === '' ? null : Number(e.target.value) }))}
+                        placeholder="0 - 900"
+                      />
+                    </FormControl>
+                  </Stack>
+                )}
+              </ModalBody>
+
+              <ModalFooter>
+                <HStack w="100%" justify="space-between">
+                  <Button variant="ghost" onClick={closeUpdate} isDisabled={savingUpdate}>
+                    Cancel
+                  </Button>
+                  <Button colorScheme="blue" onClick={saveUpdate} isLoading={savingUpdate} loadingText="Saving...">
+                    Save & Update
+                  </Button>
+                </HStack>
+              </ModalFooter>
+            </ModalContent>
+          </Modal>
+        ) : null}
+      </Container>
+    </Box>
+  )
+}
+
+function ProfileGauge({ value }: { value: number }) {
+  const v = Math.max(0, Math.min(100, Math.round(value)))
+  const width = 100
+  const height = 80
+  const cx = width / 2
+  const cy = height - 6
+  const r = Math.min(width / 2 - 12, height - 20)
+
+  function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180.0
+    return { x: cx + r * Math.cos(angleRad), y: cy + r * Math.sin(angleRad) }
+  }
+  function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
+    const start = polarToCartesian(cx, cy, r, endAngle)
+    const end = polarToCartesian(cx, cy, r, startAngle)
+    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`
+  }
+
+  const segs = [
+    { fromPct: 0, toPct: 60, color: '#2ecc71' },
+    { fromPct: 60, toPct: 80, color: '#f1c40f' }, 
+    { fromPct: 80, toPct: 100, color: '#e74c3c' }, 
+  ]
+
+  const needleAngleDeg = 180 - (v / 100) * 180 
+  const needleCoord = polarToCartesian(cx, cy, r - 6, needleAngleDeg)
+  const pivot = { x: cx, y: cy }
+
+  return (
+    <Box display="flex" alignItems="center" gap={4} mt={2} mb={1}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Profile completion ${v}%`}>
+        <path d={describeArc(cx, cy, r, 0, 180)} fill="none" stroke="#edf2f7" strokeWidth="14" strokeLinecap="round" />
+        {segs.map((s) => {
+          const startAngle = 180 - (s.toPct / 100) * 180
+          const endAngle = 180 - (s.fromPct / 100) * 180
+          const d = describeArc(cx, cy, r, startAngle, endAngle)
+          return <path key={s.color} d={d} fill="none" stroke={s.color} strokeWidth="14" strokeLinecap="round" />
+        })}
+
+        {[0, 25, 50, 75, 100].map((t) => {
+          const ang = 180 - (t / 100) * 180
+          const p1 = polarToCartesian(cx, cy, r + 8, ang)
+          const p2 = polarToCartesian(cx, cy, r - 6, ang)
+          return <line key={t} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#cbd5e0" strokeWidth={t === 50 ? 2.4 : 1.2} strokeLinecap="round" />
+        })}
+        <line x1={pivot.x} y1={pivot.y} x2={needleCoord.x} y2={needleCoord.y} stroke="#2D3748" strokeWidth={3.5} strokeLinecap="round" />
+        <circle cx={pivot.x} cy={pivot.y} r="6" fill="#2D3748" stroke="#ffffff" strokeWidth="1" />
+        <text x={22} y={height - 8} fontSize="12" fill="#16A34A" fontWeight="600">
+          Low
+        </text>
+        <text x={width - 42} y={height - 8} fontSize="12" fill="#E53E3E" fontWeight="600">
+          High
+        </text>
+      </svg>
+
+      <Box>
+        <Text fontSize="2xl" fontWeight="900" color="gray.800">
+          {v}%
+        </Text>
+        <Text fontSize="sm" color="gray.500">
+          Profile completion
+        </Text>
+      </Box>
     </Box>
   )
 }
@@ -1284,6 +1405,7 @@ function VerifiedTickBadge({
   fallbackLabel: string
   fallbackColorScheme: string
 }) {
+
   if (!isVerified) {
     return (
       <Badge colorScheme={fallbackColorScheme} borderRadius="full" px={3} py={1}>
@@ -1294,40 +1416,22 @@ function VerifiedTickBadge({
 
   return (
     <Box
-      p="1px"
-      borderRadius="full"
-      bgGradient="linear(to-r, blue.400, purple.400, cyan.400)"
       display="inline-flex"
       alignItems="center"
-      transition="all 0.18s ease"
-      _hover={{
-        transform: 'translateY(-1px)',
-        filter: 'brightness(1.02)',
-        boxShadow: '0 10px 24px rgba(49,130,206,0.20)',
-      }}
+      borderRadius="full"
+      border="1px solid"
+      borderColor="blue.200"
+      bg="white"
+      px={3}
+      py={1}
     >
-      <HStack
-        spacing={2}
-        px={3}
-        py={1}
-        borderRadius="full"
-        bg="white"
-        border="1px solid"
-        borderColor="blue.100"
-        animation={`${pulseRing} 2s infinite`}
-      >
-        <Box animation={`${tickPop} 420ms ease-out`} display="flex" alignItems="center" justifyContent="center">
-          <CheckCircleIcon color="blue.500" boxSize={4} />
-        </Box>
-
-        <Text fontSize="sm" fontWeight="800" color="blue.700" lineHeight="1">
-          Verified
-        </Text>
-      </HStack>
+      <CheckCircleIcon color="blue.500" boxSize={4} mr={2} />
+      <Text fontSize="sm" fontWeight="700" color="blue.600">
+        Verified
+      </Text>
     </Box>
   )
 }
-
 
 function valueOrDash(v?: string | null) {
   const s = (v ?? '').toString().trim()

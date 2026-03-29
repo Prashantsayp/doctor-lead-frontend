@@ -39,11 +39,11 @@ import { SearchIcon, ChevronDownIcon, DownloadIcon } from '@chakra-ui/icons'
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 type RiskFilter = 'all' | 'low' | 'medium' | 'high'
-type ProfessionFilter = 'all' | 'DOCTOR' | 'ENGINEER' | 'LAWYER' | 'CA'
+type ProfessionFilter =| 'all'| 'DOCTOR'| 'CA'| 'LAWYER'| 'SALARIED'| 'BUSINESSMAN'| 'COMPANY_SECRETARY'| 'COST_ACCOUNTANT'| 'REALTOR'| 'BROKER'| 'CHANNEL_PARTNER'
 
 type DoctorLeadRow = {
   _id: string
-  profession?: 'DOCTOR' | 'ENGINEER' | 'LAWYER' | 'CA'
+  profession?: 'DOCTOR' | 'LAWYER' | 'CA'| 'SALARIED'| 'BUSINESSMAN'| 'COMPANY_SECRETARY'| 'COST_ACCOUNTANT'| 'REALTOR'| 'BROKER'| 'CHANNEL_PARTNER'
   fullName: string
   registrationNumber?: string
   mobileNumber: string
@@ -157,10 +157,22 @@ const matchCityOrPin = (cityOrPinValue: any, userQuery: string) => {
 }
 
 const formatProfession = (profession?: string) => {
-  if (!profession) return 'Doctor'
-  if (profession === 'CA') return 'CA'
-  const lower = profession.toLowerCase()
-  return lower.charAt(0).toUpperCase() + lower.slice(1)
+  if (!profession) return '—'
+
+  const map: Record<string, string> = {
+    DOCTOR: 'Doctor',
+    CA: 'CA',
+    LAWYER: 'Lawyer',
+    SALARIED: 'Salaried',
+    BUSINESSMAN: 'Businessman',
+    COMPANY_SECRETARY: 'Company Secretary',
+    COST_ACCOUNTANT: 'Cost Accountant',
+    REALTOR: 'Realtor',
+    BROKER: 'Broker',
+    CHANNEL_PARTNER: 'Channel Partner',
+  }
+
+  return map[profession] || profession
 }
 
 export default function AdminDoctorsPage() {
@@ -638,7 +650,13 @@ export default function AdminDoctorsPage() {
                 <option value="DOCTOR">Doctor</option>
                 <option value="CA">CA</option>
                 <option value="LAWYER">Lawyer</option>
-                <option value="ENGINEER">Engineer</option>
+                <option value="SALARIED">Salaried</option>
+                <option value="BUSINESSMAN">Businessman</option>
+                <option value="COMPANY_SECRETARY">Company Secretary</option>
+                <option value="COST_ACCOUNTANT">Cost Accountant</option>
+                <option value="REALTOR">Realtor</option>
+                <option value="BROKER">Broker</option>
+                <option value="CHANNEL_PARTNER">Channel Partner</option>
               </Select>
             </FormControl>
           </SimpleGrid>

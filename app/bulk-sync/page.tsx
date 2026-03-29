@@ -22,9 +22,11 @@ const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 const SUPPORTED_EXTENSIONS = ['.csv', '.xlsx']
 
-type LeadProfession = 'DOCTOR' | 'CA' | 'LAWYER' | 'ENGINEER'
+type LeadProfession =
+| 'DOCTOR'| 'CA'| 'LAWYER'| 'SALARIED'| 'BUSINESSMAN'| 'COMPANY_SECRETARY'| 'COST_ACCOUNTANT'| 'REALTOR'| 'BROKER'| 'CHANNEL_PARTNER'
 
-const PROFESSION_OPTIONS: LeadProfession[] = ['DOCTOR', 'CA', 'LAWYER', 'ENGINEER']
+const PROFESSION_OPTIONS: LeadProfession[] = 
+['DOCTOR','CA','LAWYER','SALARIED','BUSINESSMAN','COMPANY_SECRETARY','COST_ACCOUNTANT','REALTOR','BROKER','CHANNEL_PARTNER',]
 
 const BULK_HEADERS = [
   'profession',
@@ -53,112 +55,21 @@ const BULK_HEADERS = [
 ]
 
 const SAMPLE_ROWS: Record<LeadProfession, Array<string | number | boolean>> = {
-  DOCTOR: [
-    'DOCTOR',
-    'Dr. Asha Mehta',
-    '9876543210',
-    'Delhi',
-    'asha.mehta@example.com',
-    'REG-DEL-12345',
-    'ABCDE1234F',
-    '123412341234',
-    8,
-    'MBBS|MD',
-    'Clinic|Hospital',
-    'Interested in working capital',
-    300000,
-    220000,
-    15000,
-    25000,
-    2,
-    'Business Loan|Personal Loan',
-    false,
-    true,
-    15000000,
-    300000,
-    782,
-  ],
-  CA: [
-    'CA',
-    'Amit Sharma',
-    '9876543211',
-    'Noida',
-    'amit.sharma@example.com',
-    'CA-REG-9988',
-    'PQRSX1234Z',
-    '234523452345',
-    10,
-    'B.Com|CA',
-    'Practice|Consultancy',
-    'Interested in professional loan',
-    250000,
-    180000,
-    20000,
-    35000,
-    2,
-    'Business Loan',
-    false,
-    true,
-    12000000,
-    0,
-    785,
-  ],
-  LAWYER: [
-    'LAWYER',
-    'Rohit Verma',
-    '9876543212',
-    'Gurgaon',
-    'rohit.verma@example.com',
-    'BAR-REG-4567',
-    'LMNOP1234Q',
-    '345634563456',
-    7,
-    'LLB|LLM',
-    'Chamber|Corporate',
-    'Requires working capital support',
-    200000,
-    150000,
-    10000,
-    22000,
-    1,
-    'Personal Loan',
-    false,
-    true,
-    10000000,
-    0,
-    768,
-  ],
-  ENGINEER: [
-    'ENGINEER',
-    'Neha Singh',
-    '9876543213',
-    'Pune',
-    'neha.singh@example.com',
-    'ENG-REG-7788',
-    'ZXCVB1234N',
-    '456745674567',
-    6,
-    'B.Tech|M.Tech',
-    'Service|Consulting',
-    'Interested in LAP',
-    180000,
-    135000,
-    12000,
-    18000,
-    1,
-    'Loan Against Property',
-    false,
-    true,
-    9000000,
-    0,
-    750,
-  ],
+  DOCTOR: ['DOCTOR','Dr. Asha Mehta','9876543210','Delhi','asha.mehta@example.com','REG-DEL-12345','ABCDE1234F','123412341234',8,'MBBS|MD','Clinic|Hospital','Remarks',300000,220000,15000,25000,2,'Business Loan',false,true,15000000,300000,782],
+  CA: ['CA','Amit Sharma','9876543211','Noida','amit.sharma@example.com','CA-REG-9988','PQRSX1234Z','234523452345',10,'CA','Practice','Remarks',250000,180000,20000,35000,2,'Business Loan',false,true,12000000,0,785],
+  LAWYER: ['LAWYER','Rohit Verma','9876543212','Gurgaon','rohit.verma@example.com','BAR-REG-4567','LMNOP1234Q','345634563456',7,'LLB','Practice','Remarks',200000,150000,10000,22000,1,'Personal Loan',false,true,10000000,0,768],
+  SALARIED: ['SALARIED','Neha Singh','9876543213','Pune','neha.singh@example.com','','ZXCVB1234N','456745674567',6,'B.Tech','Job','Remarks',180000,135000,12000,18000,1,'Loan Against Property',false,true,9000000,0,750],
+  BUSINESSMAN: ['BUSINESSMAN','Raj Malhotra','9876543214','Delhi','raj@example.com','GST123','','567856785678',12,'MBA','Business','Remarks',400000,300000,50000,40000,3,'Business Loan',false,true,20000000,0,790],
+  COMPANY_SECRETARY: ['COMPANY SECRETARY','Pooja Jain','9876543215','Noida','pooja@example.com','CS123','','678967896789',9,'CS','Practice','Remarks',220000,170000,20000,20000,1,'Personal Loan',false,true,8000000,0,770],
+  COST_ACCOUNTANT: ['COST ACCOUNTANT','Vikas Agarwal','9876543216','Jaipur','vikas@example.com','CMA123','','789078907890',11,'CMA','Practice','Remarks',210000,160000,15000,21000,1,'Business Loan',false,true,7000000,0,765],
+  REALTOR: ['REALTOR','Sameer Khan','9876543217','Dubai','sameer@example.com','RERA123','','890189018901',5,'Graduate','Broker','Remarks',300000,250000,20000,30000,2,'LAP',false,true,15000000,0,755],
+  BROKER: ['BROKER','Anil Verma','9876543218','Mumbai','anil@example.com','','','901290129012',6,'Graduate','Loan Broker','Remarks',180000,150000,10000,20000,1,'Personal Loan',false,false,0,0,740],
+  CHANNEL_PARTNER: ['CHANNEL PARTNER','Sunil Gupta','9876543219','Delhi','sunil@example.com','','','912391239123',4,'Graduate','DSA','Remarks',160000,140000,10000,15000,1,'Business Loan',false,false,0,0,735],
 }
 
-export default function BulkSyncPage() {
+export default function BulkSyncPage() { 
   const toast = useToast()
   const router = useRouter()
-
   const [profession, setProfession] = React.useState<LeadProfession>('DOCTOR')
   const [file, setFile] = React.useState<File | null>(null)
   const [dragOver, setDragOver] = React.useState(false)
@@ -307,7 +218,7 @@ export default function BulkSyncPage() {
     setUploading(true)
 
     try {
-      const response = await fetch(`${baseUrl}/doctor-lead/bulk-sync/upload`, {
+      const response = await fetch(`${baseUrl}/doctor-lead/bulk-upload`, {
         method: 'POST',
         body: formData,
       })
@@ -369,10 +280,9 @@ export default function BulkSyncPage() {
               Lead Sync Engine
             </Heading>
           </HStack>
-
           <Text color="gray.600" maxW="2xl">
-            Bulk upload leads across Doctor, CA, Lawyer, and Engineer profiles using the latest profession-based model.
-          </Text>
+           Deduplication | CKYC Verification | Bulk Upload | Real-time Sync | Multi-Profession Support
+           </Text>
         </Stack>
 
         <Flex gap={6} direction={{ base: 'column', md: 'row' }} align="stretch">
