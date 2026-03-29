@@ -151,7 +151,7 @@ export default function LoginPage() {
                 fontSize="xs"
                 fontWeight="800"
               >
-                Doctor-Lead
+                Professional-Lead
               </Box>
             </HStack>
           </Box>
@@ -256,7 +256,7 @@ export default function LoginPage() {
         </Box>
 
         <Text mt={4} textAlign="center" fontSize="xs" color="gray.500">
-          © {new Date().getFullYear()} Doctor-Lead • Secure access
+          © {new Date().getFullYear()} Professional-Lead • Secure access
         </Text>
       </Container>
     </Box>

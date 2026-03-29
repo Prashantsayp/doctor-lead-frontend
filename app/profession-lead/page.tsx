@@ -137,8 +137,18 @@ function MultiSelect({
 }
 
 type DetectMode = 'mobile' | 'email' | 'reg'
-type ProfessionType = 'DOCTOR' | 'CA' | 'LAWYER' | 'ENGINEER' | ''
-
+type ProfessionType =
+  | 'DOCTOR'
+  | 'CA'
+  | 'LAWYER'
+  | 'SALARIED'
+  | 'BUSINESSMAN'
+  | 'COMPANY_SECRETARY'
+  | 'COST_ACCOUNTANT'
+  | 'REALTOR'
+  | 'BROKER'
+  | 'CHANNEL_PARTNER'
+  | ''
 type ExistsState = {
   checking: boolean
   exists: boolean
@@ -222,7 +232,13 @@ const PROFESSION_OPTIONS = [
   { label: 'Doctor', value: 'DOCTOR' },
   { label: 'CA', value: 'CA' },
   { label: 'Lawyer', value: 'LAWYER' },
-  { label: 'Engineer', value: 'ENGINEER' },
+  { label: 'Salaried', value: 'SALARIED' },
+  { label: 'Businessman', value: 'BUSINESSMAN' },
+  { label: 'Company Secretary', value: 'COMPANY_SECRETARY' },
+  { label: 'Cost Accountant', value: 'COST_ACCOUNTANT' },
+  { label: 'Realtor', value: 'REALTOR' },
+  { label: 'Broker', value: 'BROKER' },
+  { label: 'Channel Partner', value: 'CHANNEL_PARTNER' },
 ]
 
 const PROFESSION_CONFIG: Record<
@@ -251,26 +267,77 @@ const PROFESSION_CONFIG: Record<
     registrationLabel: 'Registration Number',
     registrationPlaceholder: 'MCI-12345 / UP-889900',
   },
+
   CA: {
     title: 'New CA Lead',
     qualificationOptions: ['CA', 'CS', 'CMA', 'B.Com', 'M.Com', 'MBA', 'Other'],
     practiceOptions: ['Individual Practice', 'CA Firm', 'Audit Firm', 'Consultant', 'In-house Finance', 'Other'],
-    registrationLabel: 'Membership / Registration Number',
+    registrationLabel: 'Membership Number',
     registrationPlaceholder: 'ICAI Membership No.',
   },
+
   LAWYER: {
     title: 'New Lawyer Lead',
     qualificationOptions: ['LLB', 'LLM', 'BA LLB', 'BBA LLB', 'Other'],
     practiceOptions: ['Independent Practice', 'Law Firm', 'Corporate Legal', 'High Court', 'District Court', 'Other'],
-    registrationLabel: 'Bar Council Registration Number',
+    registrationLabel: 'Bar Council Number',
     registrationPlaceholder: 'Bar Council Reg. No.',
   },
-  ENGINEER: {
-    title: 'New Engineer Lead',
-    qualificationOptions: ['B.Tech', 'BE', 'M.Tech', 'ME', 'Diploma', 'PhD', 'Other'],
-    practiceOptions: ['Private Job', 'Govt Job', 'Consultant', 'Contractor', 'Self Employed', 'Other'],
-    registrationLabel: 'Employee / License / Registration Number',
-    registrationPlaceholder: 'Employee ID / Registration No.',
+
+  SALARIED: {
+    title: 'New Salaried Lead',
+    qualificationOptions: ['Graduate', 'Post Graduate', 'Diploma', 'Other'],
+    practiceOptions: ['Private Job', 'Govt Job', 'Contract', 'Other'],
+    registrationLabel: 'Employee ID (Optional)',
+    registrationPlaceholder: 'Employee ID',
+  },
+
+  BUSINESSMAN: {
+    title: 'New Business Lead',
+    qualificationOptions: ['Graduate', 'MBA', 'Other'],
+    practiceOptions: ['Proprietor', 'Partnership', 'Pvt Ltd', 'Other'],
+    registrationLabel: 'Business Registration Number',
+    registrationPlaceholder: 'GST / UDYAM / Shop Act',
+  },
+
+  COMPANY_SECRETARY: {
+    title: 'New Company Secretary Lead',
+    qualificationOptions: ['CS', 'B.Com', 'M.Com', 'LLB', 'Other'],
+    practiceOptions: ['Practice', 'Company Job', 'Consultant', 'Other'],
+    registrationLabel: 'ICSI Membership Number',
+    registrationPlaceholder: 'ICSI Membership No.',
+  },
+
+  COST_ACCOUNTANT: {
+    title: 'New Cost Accountant Lead',
+    qualificationOptions: ['CMA', 'B.Com', 'M.Com', 'MBA', 'Other'],
+    practiceOptions: ['Practice', 'Company Job', 'Consultant', 'Other'],
+    registrationLabel: 'CMA Membership Number',
+    registrationPlaceholder: 'CMA Membership No.',
+  },
+
+  REALTOR: {
+    title: 'New Realtor Lead',
+    qualificationOptions: ['Graduate', 'Other'],
+    practiceOptions: ['Broker', 'Builder', 'Agent', 'Other'],
+    registrationLabel: 'RERA Registration Number',
+    registrationPlaceholder: 'RERA Number',
+  },
+
+  BROKER: {
+    title: 'New Broker Lead',
+    qualificationOptions: ['Graduate', 'Other'],
+    practiceOptions: ['Loan Broker', 'Insurance Broker', 'Other'],
+    registrationLabel: 'Registration Number',
+    registrationPlaceholder: 'Enter Registration Number',
+  },
+
+  CHANNEL_PARTNER: {
+    title: 'New Channel Partner Lead',
+    qualificationOptions: ['Graduate', 'Other'],
+    practiceOptions: ['DSA', 'Connector', 'Referral Partner', 'Other'],
+    registrationLabel: 'Partner Code',
+    registrationPlaceholder: 'Partner Code',
   },
 }
 
