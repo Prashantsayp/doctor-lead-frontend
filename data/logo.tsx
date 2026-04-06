@@ -26,7 +26,8 @@ export const Logo: React.FC<HTMLChakraProps<'div'>> = (props) => {
         color="blue.600"
         letterSpacing="0.2px"
       >
-        FintechProfessional
+        CustomerIntelligence
+
       </Text>
     </HStack>
   )

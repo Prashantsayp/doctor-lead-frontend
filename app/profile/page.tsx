@@ -192,7 +192,7 @@ export default function ProfilePage() {
   const statusColor = me?.status === 'ACTIVE' ? 'green' : 'red'
 
   return (
-    <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
+    <Box bg="gray.50" minH="100vh" py={{ base: 0, md: 0 }}>
       <Container maxW="container.md">
         <Box borderRadius="3xl" overflow="hidden" border="1px solid" borderColor="gray.200" boxShadow="sm" bg="white">
           {/* Header */}
