@@ -26,11 +26,9 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
-  SimpleGrid,
-  FormControl,
-  FormLabel,
   Flex,
   Tooltip,
+  Stack,
 } from '@chakra-ui/react'
 import { jwtDecode } from 'jwt-decode'
 import { SearchIcon, ChevronDownIcon, DownloadIcon } from '@chakra-ui/icons'
@@ -39,11 +37,34 @@ import { SearchIcon, ChevronDownIcon, DownloadIcon } from '@chakra-ui/icons'
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 type RiskFilter = 'all' | 'low' | 'medium' | 'high'
-type ProfessionFilter =| 'all'| 'DOCTOR'| 'CA'| 'LAWYER'| 'SALARIED'| 'BUSINESSMAN'| 'COMPANY_SECRETARY'| 'COST_ACCOUNTANT'| 'REALTOR'| 'BROKER'| 'CHANNEL_PARTNER'
+type ProfessionFilter =
+  | 'all'
+  | 'DOCTOR'
+  | 'CA'
+  | 'LAWYER'
+  | 'SALARIED'
+  | 'BUSINESSMAN'
+  | 'COMPANY_SECRETARY'
+  | 'COST_ACCOUNTANT'
+  | 'REALTOR'
+  | 'BROKER'
+  | 'CHANNEL_PARTNER'
+
+type LoanStatus = 'NEW' | 'APPROVED' | 'REJECTED' | 'DISBURSED'
 
 type DoctorLeadRow = {
   _id: string
-  profession?: 'DOCTOR' | 'LAWYER' | 'CA'| 'SALARIED'| 'BUSINESSMAN'| 'COMPANY_SECRETARY'| 'COST_ACCOUNTANT'| 'REALTOR'| 'BROKER'| 'CHANNEL_PARTNER'
+  profession?:
+    | 'DOCTOR'
+    | 'LAWYER'
+    | 'CA'
+    | 'SALARIED'
+    | 'BUSINESSMAN'
+    | 'COMPANY_SECRETARY'
+    | 'COST_ACCOUNTANT'
+    | 'REALTOR'
+    | 'BROKER'
+    | 'CHANNEL_PARTNER'
   fullName: string
   registrationNumber?: string
   mobileNumber: string
@@ -66,6 +87,7 @@ type DoctorLeadRow = {
   hasProperty?: boolean
   propertyValue?: number
   medicalEquipmentValue?: number
+  loanStatus?: LoanStatus
 }
 
 const getToken = () => {
@@ -123,17 +145,6 @@ const downloadTextFile = (filename: string, text: string, mime: string) => {
   URL.revokeObjectURL(url)
 }
 
-const fmtDate = (iso?: string) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  try {
-    return d.toLocaleString('en-IN')
-  } catch {
-    return iso
-  }
-}
-
 const normalizeText = (v: any) =>
   String(v ?? '')
     .toLowerCase()
@@ -144,21 +155,17 @@ const normalizeText = (v: any) =>
 const matchCityOrPin = (cityOrPinValue: any, userQuery: string) => {
   const q = normalizeText(userQuery)
   if (!q) return true
-
   const raw = normalizeText(cityOrPinValue)
   if (!raw) return false
-
   if (/^\d+$/.test(q)) {
     const rawDigits = raw.replace(/\D/g, '')
     return rawDigits.includes(q)
   }
-
   return raw.includes(q)
 }
 
 const formatProfession = (profession?: string) => {
   if (!profession) return '—'
-
   const map: Record<string, string> = {
     DOCTOR: 'Doctor',
     CA: 'CA',
@@ -171,8 +178,14 @@ const formatProfession = (profession?: string) => {
     BROKER: 'Broker',
     CHANNEL_PARTNER: 'Channel Partner',
   }
-
   return map[profession] || profession
+}
+
+const loanStatusColor = (status?: string) => {
+  if (status === 'APPROVED') return 'green'
+  if (status === 'REJECTED') return 'red'
+  if (status === 'DISBURSED') return 'purple'
+  return 'gray'
 }
 
 export default function AdminDoctorsPage() {
@@ -200,6 +213,8 @@ export default function AdminDoctorsPage() {
   const [profession, setProfession] = React.useState<ProfessionFilter>('all')
 
   const [exporting, setExporting] = React.useState(false)
+  const [actionLoadingId, setActionLoadingId] = React.useState<string | null>(null)
+  
 
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 350)
@@ -230,6 +245,104 @@ export default function AdminDoctorsPage() {
     setPage(1)
   }, [city, risk, profession])
 
+  const API = process.env.NEXT_PUBLIC_API_URL
+
+  const updateRowStatus = (id: string, loanStatus: LoanStatus) => {
+    setRows((prev) => prev.map((r) => (r._id === id ? { ...r, loanStatus } : r)))
+  }
+
+  // const handleApprove = async (id: string) => {
+  //   const token = getToken()
+  //   const prev = rows.find((r) => r._id === id)?.loanStatus
+  //   updateRowStatus(id, 'APPROVED')
+  //   setActionLoadingId(id)
+  //   try {
+  //     const res = await fetch(`${API}/doctor-lead/approve/${id}`, {
+  //       method: 'PATCH',
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     })
+  //     if (!res.ok) throw new Error('Failed')
+  //     toast({ title: 'Lead Approved', status: 'success' })
+  //   } catch {
+  //     if (prev !== undefined) updateRowStatus(id, prev)
+  //     toast({ title: 'Approve failed', status: 'error' })
+  //   } finally {
+  //     setActionLoadingId(null)
+  //   }
+  // }
+
+  // const handleReject = async (id: string) => {
+  //   const token = getToken()
+  //   const prev = rows.find((r) => r._id === id)?.loanStatus
+  //   updateRowStatus(id, 'REJECTED')
+  //   setActionLoadingId(id)
+  //   try {
+  //     const res = await fetch(`${API}/doctor-lead/reject/${id}`, {
+  //       method: 'PATCH',
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     })
+  //     if (!res.ok) throw new Error('Failed')
+  //     toast({ title: 'Lead Rejected', status: 'warning' })
+  //   } catch {
+  //     if (prev !== undefined) updateRowStatus(id, prev)
+  //     toast({ title: 'Reject failed', status: 'error' })
+  //   } finally {
+  //     setActionLoadingId(null)
+  //   }
+  // }
+
+  // const handleDisburse = async (id: string) => {
+  //   const token = getToken()
+  //   const prev = rows.find((r) => r._id === id)?.loanStatus
+  //   updateRowStatus(id, 'DISBURSED')
+  //   setActionLoadingId(id)
+  //   try {
+  //     const res = await fetch(`${API}/doctor-lead/disburse/${id}`, {
+  //       method: 'PATCH',
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     })
+  //     if (!res.ok) throw new Error('Failed')
+  //     toast({ title: 'Amount Disbursed', status: 'success' })
+  //   } catch {
+  //     if (prev !== undefined) updateRowStatus(id, prev)
+  //     toast({ title: 'Disburse failed', status: 'error' })
+  //   } finally {
+  //     setActionLoadingId(null)
+  //   }
+  // }
+
+
+  const handleStatusChange = async (id: string, status: LoanStatus) => {
+  const token = getToken()
+  const prev = rows.find((r) => r._id === id)?.loanStatus
+
+  updateRowStatus(id, status)
+  setActionLoadingId(id)
+
+  try {
+    const res = await fetch(`${API}/doctor-lead/${id}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status }),
+    })
+
+    if (!res.ok) throw new Error('Failed')
+
+    toast({
+      title: `Status changed to ${status}`,
+      status: 'success',
+    })
+  } catch {
+    if (prev !== undefined) updateRowStatus(id, prev)
+    toast({ title: 'Status update failed', status: 'error' })
+  } finally {
+    setActionLoadingId(null)
+  }
+}
+
   const calcProfileCompletion = React.useCallback((d: DoctorLeadRow) => {
     const fields = [
       !!d.fullName,
@@ -253,33 +366,40 @@ export default function AdminDoctorsPage() {
     (completion: number) => (completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High'),
     []
   )
+const canApprove = (status?: LoanStatus) => status === 'NEW'
+const canReject = (status?: LoanStatus) => status === 'REJECTED'
+const canDisburse = (status?: LoanStatus) => status === 'APPROVED'
+
+  const [loanStatus, setLoanStatus] = React.useState<'all' | 'APPROVED' | 'REJECTED' | 'DISBURSED'>('all')
 
   const riskColor = (bucket: 'Low' | 'Medium' | 'High') =>
     bucket === 'Low' ? 'green' : bucket === 'Medium' ? 'yellow' : 'red'
 
   const applyClientFilters = React.useCallback(
-    (items: DoctorLeadRow[]) => {
-      return items.filter((d) => {
-        const cityOk = matchCityOrPin(d.cityOrPinCode, city)
+  (items: DoctorLeadRow[]) => {
+    return items.filter((d) => {
+      const cityOk = matchCityOrPin(d.cityOrPinCode, city)
 
-        const completion = calcProfileCompletion(d)
-        const bucket = getRiskBucket(completion)
+      const completion = calcProfileCompletion(d)
+      const bucket = getRiskBucket(completion)
 
-        const riskOk =
-          risk === 'all' ||
-          (risk === 'low' && bucket === 'Low') ||
-          (risk === 'medium' && bucket === 'Medium') ||
-          (risk === 'high' && bucket === 'High')
+      const riskOk =
+        risk === 'all' ||
+        (risk === 'low' && bucket === 'Low') ||
+        (risk === 'medium' && bucket === 'Medium') ||
+        (risk === 'high' && bucket === 'High')
 
-        const professionOk =
-          profession === 'all' || String(d.profession || '').toUpperCase() === profession
+      const professionOk =
+        profession === 'all' || String(d.profession || '').toUpperCase() === profession
 
-        return cityOk && riskOk && professionOk
-      })
-    },
-    [city, risk, profession, calcProfileCompletion, getRiskBucket]
-  )
+      const statusOk =
+      loanStatus === 'all' || String(d.loanStatus || 'PENDING') === loanStatus
 
+      return cityOk && riskOk && professionOk && statusOk
+    })
+  },
+  [city, risk, profession, loanStatus, calcProfileCompletion, getRiskBucket]
+)
   const filtered = React.useMemo(() => applyClientFilters(rows), [rows, applyClientFilters])
 
   const fetchAll = React.useCallback(async () => {
@@ -330,14 +450,19 @@ export default function AdminDoctorsPage() {
         return
       }
 
-      const items = normalizeItems(data)
-      setRows(items)
+      const items = normalizeItems(data).map((d: any) => ({
+  ...d,
+  loanStatus: d.status || 'PENDING', // IMPORTANT
+}))
+
+const filteredItems = applyClientFilters(items)
+
+setRows(items)
+
+      setTotalDoctors(filteredItems.length)
 
       const tp = pickNumber(data?.totalPages, data?.data?.totalPages, data?.pagination?.totalPages)
-      const tc = pickNumber(data?.total, data?.count, data?.totalCount, data?.data?.total, data?.pagination?.total)
-
       setTotalPages(tp && tp > 0 ? tp : 1)
-      setTotalDoctors(tc !== null ? tc : items.length)
     } catch {
       setErr('Server error')
       setRows([])
@@ -346,7 +471,7 @@ export default function AdminDoctorsPage() {
     } finally {
       setLoading(false)
     }
-  }, [router, page, limit, debouncedQ, profession])
+  }, [router, page, limit, debouncedQ, profession, applyClientFilters])
 
   React.useEffect(() => {
     if (!isAdmin) return
@@ -372,7 +497,6 @@ export default function AdminDoctorsPage() {
 
       const s = debouncedQ?.trim()
       if (s) url.searchParams.set('search', s)
-
       if (profession !== 'all') url.searchParams.set('profession', profession)
 
       const res = await fetch(url.toString(), {
@@ -388,8 +512,10 @@ export default function AdminDoctorsPage() {
         )
       }
 
-      const items = normalizeItems(data)
-      allItems.push(...items)
+      const items = normalizeItems(data).map((d: any) => ({
+      ...d,
+      loanStatus: d.status, // IMPORTANT LINE
+    }))
 
       const tp = pickNumber(data?.totalPages, data?.data?.totalPages, data?.pagination?.totalPages)
       pages = tp && tp > 0 ? tp : 1
@@ -405,15 +531,10 @@ export default function AdminDoctorsPage() {
   const exportAllCSV = async () => {
     try {
       setExporting(true)
-
       const data = await fetchAllDoctorsForExport()
 
       if (!data.length) {
-        toast({
-          title: 'No data found',
-          description: 'There is no data to export for current filters.',
-          status: 'info',
-        })
+        toast({ title: 'No data found', description: 'There is no data to export for current filters.', status: 'info' })
         return
       }
 
@@ -421,13 +542,11 @@ export default function AdminDoctorsPage() {
         'Profession',
         'Name',
         'Mobile',
-        'Email',
-        'RegNo',
-        'CityOrPin',
+        'City/Pin',
         'CIBIL',
         'Completion%',
         'Risk',
-        'CreatedAt',
+        'LoanStatus',
         'DoctorId',
       ]
 
@@ -436,36 +555,24 @@ export default function AdminDoctorsPage() {
         ...data.map((d) => {
           const completion = calcProfileCompletion(d)
           const bucket = getRiskBucket(completion)
-
           return [
             csvEscape(d.profession ?? ''),
             csvEscape(d.fullName),
             csvEscape(d.mobileNumber),
-            csvEscape(d.email ?? ''),
-            csvEscape(d.registrationNumber ?? ''),
             csvEscape(d.cityOrPinCode ?? ''),
             csvEscape(d.cibilScore ?? ''),
             csvEscape(completion),
             csvEscape(bucket),
-            csvEscape(d.createdAt ?? ''),
+            csvEscape(d.loanStatus ?? 'PENDING'),
             csvEscape(d._id),
           ].join(',')
         }),
       ].join('\n')
 
       downloadTextFile('doctors_full_export.csv', lines, 'text/csv')
-
-      toast({
-        title: 'CSV exported',
-        description: `${data.length} records downloaded successfully.`,
-        status: 'success',
-      })
+      toast({ title: 'CSV exported', description: `${data.length} records downloaded successfully.`, status: 'success' })
     } catch (e: any) {
-      toast({
-        title: 'Export failed',
-        description: e?.message || 'Unable to export CSV',
-        status: 'error',
-      })
+      toast({ title: 'Export failed', description: e?.message || 'Unable to export CSV', status: 'error' })
     } finally {
       setExporting(false)
     }
@@ -474,15 +581,10 @@ export default function AdminDoctorsPage() {
   const exportAllJSON = async () => {
     try {
       setExporting(true)
-
       const data = await fetchAllDoctorsForExport()
 
       if (!data.length) {
-        toast({
-          title: 'No data found',
-          description: 'There is no data to export for current filters.',
-          status: 'info',
-        })
+        toast({ title: 'No data found', description: 'There is no data to export for current filters.', status: 'info' })
         return
       }
 
@@ -494,18 +596,9 @@ export default function AdminDoctorsPage() {
       }
 
       downloadTextFile('doctors_full_export.json', JSON.stringify(payload, null, 2), 'application/json')
-
-      toast({
-        title: 'JSON exported',
-        description: `${data.length} records downloaded successfully.`,
-        status: 'success',
-      })
+      toast({ title: 'JSON exported', description: `${data.length} records downloaded successfully.`, status: 'success' })
     } catch (e: any) {
-      toast({
-        title: 'Export failed',
-        description: e?.message || 'Unable to export JSON',
-        status: 'error',
-      })
+      toast({ title: 'Export failed', description: e?.message || 'Unable to export JSON', status: 'error' })
     } finally {
       setExporting(false)
     }
@@ -528,8 +621,9 @@ export default function AdminDoctorsPage() {
   }
 
   return (
-    <Box minH="100vh" bg="gray.50" py={{ base: 5, md: 1}}>
+    <Box minH="100vh" bg="gray.50" py={{ base: 5, md: 1 }}>
       <Container maxW="container.2xl">
+        {/* ── Header Card ── */}
         <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" p={{ base: 4, md: 5 }}>
           <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
             <Box>
@@ -549,7 +643,6 @@ export default function AdminDoctorsPage() {
                 >
                   DR
                 </Box>
-
                 <Box>
                   <Heading size="md" lineHeight="1.1">
                     All Professionals
@@ -586,80 +679,89 @@ export default function AdminDoctorsPage() {
 
           <Divider my={2} borderColor="gray.100" />
 
-          <SimpleGrid columns={{ base: 1, md: 4 }} spacing={4} alignItems="end">
-            <FormControl>
-              <FormLabel fontSize="sm" color="gray.600">
-                Search
-              </FormLabel>
-              <Box position="relative">
-                <Input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search by Name / Mobile"
-                  borderRadius="md"
-                  pl="42px"
-                />
-                <IconButton
-                  aria-label="search"
-                  icon={<SearchIcon />}
-                  size="sm"
-                  variant="ghost"
-                  position="absolute"
-                  left="8px"
-                  top="50%"
-                  transform="translateY(-50%)"
-                  pointerEvents="none"
-                />
-              </Box>
-            </FormControl>
+          {/* ── Filters ── */}
+          <Stack spacing={3}>
+  {/* Search */}
+  <Box position="relative">
+    <Input
+      value={q}
+      onChange={(e) => setQ(e.target.value)}
+      placeholder="Search by Name/Mobile"
+      borderRadius="xl"
+      pl="42px"
+      bg="gray.50"
+    />
+    <IconButton
+      aria-label="search"
+      icon={<SearchIcon />}
+      size="sm"
+      variant="ghost"
+      position="absolute"
+      left="8px"
+      top="50%"
+      transform="translateY(-50%)"
+      pointerEvents="none"
+    />
+  </Box>
 
-            <FormControl>
-              <FormLabel fontSize="sm" color="gray.600">
-                City / Pincode
-              </FormLabel>
-              <Input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. Noida / 201301"
-                borderRadius="md"
-              />
-            </FormControl>
+  {/* Filters Row */}
+  <HStack spacing={3} flexWrap="wrap">
+    <Select
+      value={risk}
+      onChange={(e) => setRisk(e.target.value as RiskFilter)}
+      w="150px"
+      borderRadius="xl"
+      bg="gray.50"
+    >
+      <option value="all">All Risk</option>
+      <option value="low">Low Risk</option>
+      <option value="medium">Medium Risk</option>
+      <option value="high">High Risk</option>
+    </Select>
 
-            <FormControl>
-              <FormLabel fontSize="sm" color="gray.600">
-                Risk
-              </FormLabel>
-              <Select value={risk} onChange={(e) => setRisk(e.target.value as RiskFilter)} borderRadius="md">
-                <option value="all">All</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </Select>
-            </FormControl>
+    <Select
+      value={profession}
+      onChange={(e) => setProfession(e.target.value as ProfessionFilter)}
+      w="170px"
+      borderRadius="xl"
+      bg="gray.50"
+    >
+      <option value="all">All Profession</option>
+      <option value="DOCTOR">Doctor</option>
+      <option value="CA">CA</option>
+      <option value="LAWYER">Lawyer</option>
+      <option value="SALARIED">Salaried</option>
+      <option value="BUSINESSMAN">Businessman</option>
+      <option value="COMPANY_SECRETARY">Company Secretary</option>
+      <option value="COST_ACCOUNTANT">Cost Accountant</option>
+      <option value="REALTOR">Realtor</option>
+      <option value="BROKER">Broker</option>
+      <option value="CHANNEL_PARTNER">Channel Partner</option>
+    </Select>
 
-            <FormControl>
-              <FormLabel fontSize="sm" color="gray.600">
-                Profession
-              </FormLabel>
-              <Select
-                value={profession}
-                onChange={(e) => setProfession(e.target.value as ProfessionFilter)}
-                borderRadius="md"
-              >
-                <option value="all">All</option>
-                <option value="DOCTOR">Doctor</option>
-                <option value="CA">CA</option>
-                <option value="LAWYER">Lawyer</option>
-                <option value="SALARIED">Salaried</option>
-                <option value="BUSINESSMAN">Businessman</option>
-                <option value="COMPANY_SECRETARY">Company Secretary</option>
-                <option value="COST_ACCOUNTANT">Cost Accountant</option>
-                <option value="REALTOR">Realtor</option>
-                <option value="BROKER">Broker</option>
-                <option value="CHANNEL_PARTNER">Channel Partner</option>
-              </Select>
-            </FormControl>
-          </SimpleGrid>
+    <Select
+      value={loanStatus}
+      onChange={(e) => setLoanStatus(e.target.value as any)}
+      w="170px"
+      borderRadius="xl"
+      bg="gray.50"
+    >
+      <option value="all">All Status</option>
+      <option value="APPROVED">Approved</option>
+      <option value="REJECTED">Rejected</option>
+      <option value="DISBURSED">Disbursed</option>
+    </Select>
+
+    <Input
+      value={city}
+      onChange={(e) => setCity(e.target.value)}
+      placeholder="City / Pincode"
+      w="180px"
+      borderRadius="xl"
+      bg="gray.50"
+    />
+  </HStack>
+</Stack>
         </Box>
 
         <Flex mt={4} align="center" justify="space-between" flexWrap="wrap" gap={1}>
@@ -682,29 +784,28 @@ export default function AdminDoctorsPage() {
             </MenuList>
           </Menu>
 
-      <HStack spacing={3} align="center">
-  <Text color="gray.600" whiteSpace="nowrap">
-    No of records:
-  </Text>
-
-  <Select
-    value={String(limit)}
-    onChange={(e) => {
-      setLimit(Number(e.target.value))
-      setPage(1)
-    }}
-    w="90px"
-    size="sm"
-    bg="white"
-    borderColor="gray.200"
-    borderRadius="md"
-  >
-    <option value="10">10</option>
-    <option value="20">20</option>
-    <option value="50">50</option>
-    <option value="100">100</option>
-  </Select>
-</HStack>
+          <HStack spacing={3} align="center">
+            <Text color="gray.600" whiteSpace="nowrap">
+              No of records:
+            </Text>
+            <Select
+              value={String(limit)}
+              onChange={(e) => {
+                setLimit(Number(e.target.value))
+                setPage(1)
+              }}
+              w="90px"
+              size="sm"
+              bg="white"
+              borderColor="gray.200"
+              borderRadius="md"
+            >
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </Select>
+          </HStack>
         </Flex>
 
         <Box mt={4} bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="hidden">
@@ -732,13 +833,12 @@ export default function AdminDoctorsPage() {
                       <Th>Profession</Th>
                       <Th>Name</Th>
                       <Th>Mobile</Th>
-                      <Th>Email</Th>
-                      <Th>Reg No</Th>
                       <Th>City/Pincode</Th>
                       <Th>CIBIL</Th>
                       <Th>Completion</Th>
                       <Th>Risk</Th>
-                      <Th>Created</Th>
+                      <Th>Loan Status</Th>
+                      <Th textAlign="center">View</Th>
                       <Th textAlign="right">Action</Th>
                     </Tr>
                   </Thead>
@@ -752,13 +852,7 @@ export default function AdminDoctorsPage() {
                       return (
                         <Tr key={d._id} _hover={{ bg: 'gray.50' }} transition="background 0.15s ease">
                           <Td>
-                            <Badge
-                              borderRadius="full"
-                              px={2.5}
-                              py={0.5}
-                              colorScheme="purple"
-                              variant="subtle"
-                            >
+                            <Badge borderRadius="full" px={2.5} py={0.5} colorScheme="purple" variant="subtle">
                               {formatProfession(d.profession)}
                             </Badge>
                           </Td>
@@ -767,8 +861,6 @@ export default function AdminDoctorsPage() {
                             {d.fullName || '—'}
                           </Td>
                           <Td>{d.mobileNumber || '—'}</Td>
-                          <Td>{d.email || '—'}</Td>
-                          <Td>{d.registrationNumber || '—'}</Td>
                           <Td>{d.cityOrPinCode ?? '—'}</Td>
                           <Td>{d.cibilScore ?? '—'}</Td>
 
@@ -789,22 +881,57 @@ export default function AdminDoctorsPage() {
                             </Badge>
                           </Td>
 
-                          <Td fontSize="xs" color="gray.600">
-                            {fmtDate(d.createdAt)}
+                          <Td>
+                            <Badge
+                              borderRadius="full"
+                              px={2.5}
+                              py={0.5}
+                              colorScheme={loanStatusColor(d.loanStatus)}
+                            >
+                              {d.loanStatus === 'NEW' ? 'PENDING' : d.loanStatus}
+                            </Badge>
                           </Td>
 
-                          <Td textAlign="right">
-                            <Button
+                          <Td textAlign="center">
+                            <IconButton
+                              aria-label="View"
+                              icon={<Text fontSize="16px">👁</Text>}
                               size="xs"
-                              colorScheme="blue"
-                              variant="outline"
+                              variant="ghost"
                               borderRadius="full"
-                              px={4}
                               onClick={() => router.push(`/profession/${d._id}`)}
-                            >
-                              Open
-                            </Button>
+                            />
                           </Td>
+
+                        <Td textAlign="right">
+  <Menu>
+    <MenuButton
+      as={Button}
+      size="xs"
+      rightIcon={actionLoadingId === d._id ? <Spinner size="xs" /> : <ChevronDownIcon />}
+      colorScheme="blue"
+      variant="outline"
+      borderRadius="full"
+      isDisabled={actionLoadingId === d._id}
+    >
+      Action
+    </MenuButton>
+
+    <MenuList>
+      <MenuItem color="green.600" onClick={() => handleStatusChange(d._id, 'APPROVED')}>
+  ✔ Approve
+</MenuItem>
+
+<MenuItem color="red.500" onClick={() => handleStatusChange(d._id, 'REJECTED')}>
+  ✖ Reject
+</MenuItem>
+
+<MenuItem color="purple.600" onClick={() => handleStatusChange(d._id, 'DISBURSED')}>
+  ₹ Disburse
+</MenuItem>
+</MenuList>
+  </Menu>
+</Td>
                         </Tr>
                       )
                     })}
@@ -820,7 +947,6 @@ export default function AdminDoctorsPage() {
                   <Text fontSize="sm" color="gray.600">
                     Page <b>{page}</b> / {totalPages}
                   </Text>
-
                   <HStack spacing={3}>
                     <Button
                       size="sm"
@@ -831,7 +957,6 @@ export default function AdminDoctorsPage() {
                     >
                       Prev
                     </Button>
-
                     <Button
                       size="sm"
                       variant="outline"

@@ -1,5 +1,4 @@
 'use client'
-
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -432,7 +431,7 @@ export default function UsersPage() {
   const endIndex = Math.min(page * limit, total)
 
   return (
-    <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
+    <Box bg="gray.50" minH="100vh" py={{ base: 0, md: 0 }}>
       <Container maxW="container.xl">
         {/* Premium Header */}
         <Box borderRadius="3xl" overflow="hidden" border="1px solid" borderColor="gray.200" boxShadow="sm" bg="white">

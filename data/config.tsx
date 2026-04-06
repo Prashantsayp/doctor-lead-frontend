@@ -26,7 +26,7 @@ const siteConfig = {
 
   seo: {
     title: 'F2 Fintech',
-    description: 'Professional Intelligence Portal',
+    description: 'Customer Intelligence Portal',
     titleTemplate: '%s | F2 Fintech',
     openGraph: {
       type: 'website',

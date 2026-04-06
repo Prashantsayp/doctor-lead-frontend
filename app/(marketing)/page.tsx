@@ -241,10 +241,10 @@ const HeroSection: React.FC = () => {
               color="blue.600"
               lineHeight="1.05"
             >
-              Professional Intelligence Portal
+              Customer Intelligence Portal
             </Heading>
             <Text maxW="3xl" color="gray.600" fontSize={{ base: 'md', md: 'lg' }}>
-              Search professional by Mobile / Email / Registration No.
+              Search Customerby Mobile / Email / Registration No.
             </Text>
           </VStack>
 
@@ -261,7 +261,7 @@ const HeroSection: React.FC = () => {
             <Box px={{ base: 6, md: 10 }} py={{ base: 7, md: 9 }}>
               <VStack spacing={3}>
                 <Heading as="h2" fontSize={{ base: '2xl', md: '3xl' }} color="blue.700" fontWeight="800">
-                  Professional Identification
+                  Customer Identification
                 </Heading>
 
                 <Box w="100%" pt={3}>
@@ -299,7 +299,7 @@ const HeroSection: React.FC = () => {
                     loadingText="Searching..."
                     onClick={handleIdentifyClick}
                   >
-                    Identify Professional
+                    Identify Customer
                   </Button>
 
                   <Divider mt={5} borderColor="gray.100" />

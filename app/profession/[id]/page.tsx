@@ -20,7 +20,6 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
-  Progress,
   Skeleton,
   Stack,
   Switch,
@@ -62,7 +61,7 @@ type DoctorLead = {
   aadharNumber?: string
   isVerified?: boolean
   cityOrPinCode: string
-
+  profession?: string
   yearsOfPractice?: number
   qualification?: string[]
   practiceType?: string[]
@@ -85,7 +84,10 @@ type DoctorLead = {
 
   cibilScore?: number | null
 
-  consent?: boolean
+  consent?: boolean,
+  leadStatus?: string,
+
+  kyc?: any
 }
 
 type RemarksItem = {
@@ -169,7 +171,11 @@ export default function DoctorProfilePage() {
     _practiceTypeDraft: '',
   })
 
+
+  const [uploadingDoc, setUploadingDoc] = React.useState<string | null>(null)
+  const [verifyingDoc, setVerifyingDoc] = React.useState<string | null>(null)
   const canEdit = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'OPERATION'
+  const canUpload = role !== null && role !== undefined
 
   const getToken = () => {
     if (typeof window === 'undefined') return null
@@ -178,7 +184,7 @@ export default function DoctorProfilePage() {
     return t
   }
 
-  React.useEffect(() => {
+React.useEffect(() => {
     const token = getToken()
     if (!token) return
     try {
@@ -197,6 +203,7 @@ export default function DoctorProfilePage() {
       setCurrentUserLabel('')
     }
   }, [])
+
 
   const fetchDoctor = React.useCallback(async () => {
     if (!id) return
@@ -286,7 +293,8 @@ export default function DoctorProfilePage() {
     const text = remarkText.trim()
     if (!text) return toast({ title: 'Please enter comment', status: 'warning' })
     if (text.length > 500) return toast({ title: 'Comment too long', description: 'Max 500 characters.', status: 'warning' })
-    if (!canEdit) return toast({ title: 'Access denied', status: 'warning' })
+
+    if (!canUpload) return toast({ title: 'Please login to add comment', status: 'info' })
 
     const now = new Date().toISOString()
     const item: RemarksItem = { id: cryptoId(), text, createdAt: now, createdBy: currentUserLabel || undefined }
@@ -457,7 +465,7 @@ export default function DoctorProfilePage() {
         return
       }
     } catch {
-
+      // ignore
     }
 
     try {
@@ -502,48 +510,236 @@ export default function DoctorProfilePage() {
   const visibleRemarks = (remarks || []).filter((r) => !r.isDeleted)
 
   const kycDocuments = React.useMemo(() => {
-    const docs = [
-      { key: 'pan', label: 'PAN Card', status: doctor?.panNumber ? 'Verified' : 'Pending' },
-      { key: 'aadhar', label: 'Aadhaar Card', status: doctor?.aadharNumber ? 'Verified' : 'Pending' },
-      { key: 'passport', label: 'Passport', status: (doctor as any)?.passportNumber ? 'Verified' : 'Pending' },
+    return [
+      {
+        key: 'pan',
+        label: 'PAN Card',
+        status: (doctor as any)?.kyc?.pan?.status || 'Pending',
+        fileUrl: (doctor as any)?.kyc?.pan?.fileUrl,
+      },
+      {
+        key: 'aadhar',
+        label: 'Aadhaar Card',
+        status: (doctor as any)?.kyc?.aadhar?.status || 'Pending',
+        fileUrl: (doctor as any)?.kyc?.aadhar?.fileUrl,
+      },
+      {
+        key: 'passport',
+        label: 'Passport',
+        status: (doctor as any)?.kyc?.passport?.status || 'Pending',
+        fileUrl: (doctor as any)?.kyc?.passport?.fileUrl,
+      },
+      {
+        key: 'photo',
+        label: 'Photo',
+        status: (doctor as any)?.kyc?.photo?.status || 'Pending',
+        fileUrl: (doctor as any)?.kyc?.photo?.fileUrl,
+      },
     ]
-    return docs
   }, [doctor])
 
-  const handleUploadDoc = (docKey: string, label: string) => {
-    if (!canEdit) return toast({ title: 'Access denied', status: 'warning' })
-    toast({ title: `Upload ${label}`, description: 'Upload flow not implemented in this demo.', status: 'info' })
+  const fileInputsRef = React.useRef<Record<string, HTMLInputElement | null>>({})
+
+  const buildFileUrl = (fileUrl?: string | null): string | null => {
+    if (!fileUrl) return null
+    const s = String(fileUrl).trim()
+    if (!s) return null
+    if (/^https?:\/\//i.test(s)) return s
+    const base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '')
+    return `${base}/${s.replace(/^\/+/, '')}`
   }
 
-  const handleViewDoc = (docKey: string, label: string) => {
-    toast({ title: `View ${label}`, description: 'View flow not implemented in this demo.', status: 'info' })
+  const uploadFile = async (docKey: string, label: string, file: File | null) => {
+  if (!doctor?._id) {
+    toast({ title: 'Lead not found', status: 'error' })
+    return
   }
 
-  const handleDownloadDoc = (docKey: string, label: string) => {
-    toast({ title: `Download ${label}`, description: 'Download not implemented in this demo.', status: 'info' })
+  if (!file) return
+
+  const token = localStorage.getItem('token')
+  if (!token) {
+    toast({ title: 'Please login first', status: 'info' })
+    return
   }
 
+  const formData = new FormData()
+  formData.append('file', file)
+
+  setUploadingDoc(docKey)
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/kyc/upload/${doctor._id}/${docKey}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    )
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.message || 'Upload failed')
+    }
+
+    toast({
+      title: `${label} uploaded successfully`,
+      status: 'success',
+    })
+
+    await fetchDoctor()
+  } catch (err: any) {
+    toast({
+      title: 'Upload failed',
+      description: err.message,
+      status: 'error',
+    })
+  } finally {
+    setUploadingDoc(null)
+  }
+}
+
+  const handleViewDoc = (docKey: string) => {
+    const doc = kycDocuments.find((d) => d.key === docKey)
+    const url = buildFileUrl(doc?.fileUrl)
+    if (!url) {
+      toast({ title: 'File not uploaded', status: 'warning' })
+      return
+    }
+    window.open(url, '_blank')
+  }
+
+  const handleDownloadDoc = async (docKey: string) => {
+    const doc = kycDocuments.find((d) => d.key === docKey)
+    const url = buildFileUrl(doc?.fileUrl)
+    if (!url) {
+      toast({ title: 'File not uploaded', status: 'warning' })
+      return
+    }
+
+    try {
+      const token = getToken()
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      if (!res.ok) {
+        // try to read error message JSON if available
+        let json: any = null
+        try { json = await res.json() } catch {}
+        throw new Error(json?.message || `Download failed (${res.status})`)
+      }
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      const filename = String((doc?.fileUrl || docKey).split('/').pop() || docKey)
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(blobUrl)
+      toast({ title: 'Downloaded', status: 'success' })
+    } catch (err: any) {
+      toast({ title: 'Download failed', description: err?.message || String(err), status: 'error' })
+    }
+  }
+
+  const verifyKyc = async (docType: string) => {
+    if (!doctor?._id) {
+      toast({ title: 'Lead not found', status: 'error' })
+      return
+    }
+
+    const token = getToken()
+    if (!token) {
+      toast({ title: 'Please login first', status: 'info' })
+      router.push('/login')
+      return
+    }
+
+    try {
+      setVerifyingDoc(docType)
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/kyc/verify/${doctor._id}/${docType}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Verification failed')
+
+      toast({
+        title: `${docType.toUpperCase()} verified`,
+        status: 'success',
+      })
+
+      await fetchDoctor()
+    } catch (err: any) {
+      toast({
+        title: 'Verification failed',
+        description: err?.message || String(err),
+        status: 'error',
+      })
+    } finally {
+      setVerifyingDoc(null)
+    }
+  }
 
   return (
-    <Box bg="gray.50" minH="100vh" py={{ base: 6, md: 10 }}>
+    <Box bg="gray.50" minH="100vh" py={{ base: 0, md: 0 }}>
       <Container maxW="7xl">
         <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="2xl" boxShadow="sm" p={{ base: 4, md: 6 }}>
           <HStack justify="space-between" align="start" spacing={6} flexWrap="wrap">
             <HStack spacing={4} align="center">
-              <Avatar size="lg" name={doctor?.fullName || 'Doctor'} />
+              <Avatar size="lg" name={doctor?.fullName || doctor?.profession || 'User'} />
               <Box>
                 <Skeleton isLoaded={!loading}>
-                  <HStack spacing={2} flexWrap="wrap" align="center">
-                    <Heading size="md">{doctor?.fullName || '—'}</Heading>
+                  <Stack spacing={1}>
+                    <HStack spacing={2} align="center">
+                      <Heading size="md">{doctor?.fullName || '—'}</Heading>
 
-                    <VerifiedTickBadge isVerified={uiVerified} fallbackLabel={verifiedLabel} fallbackColorScheme={verifiedColor} />
+                      <VerifiedTickBadge
+                        isVerified={uiVerified}
+                        fallbackLabel={verifiedLabel}
+                        fallbackColorScheme={verifiedColor}
+                      />
 
-                    {canEdit ? (
-                      <Tooltip label="Edit / Update profile" hasArrow>
-                        <IconButton aria-label="Edit / Update profile" icon={<EditIcon />} size="sm" variant="ghost" onClick={openUpdate} />
-                      </Tooltip>
-                    ) : null}
-                  </HStack>
+                      {canEdit && (
+                        <Tooltip label="Edit / Update profile" hasArrow>
+                          <IconButton
+                            aria-label="Edit / Update profile"
+                            icon={<EditIcon />}
+                            size="sm"
+                            variant="ghost"
+                            onClick={openUpdate}
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
+
+                    <HStack spacing={2}>
+                      <Tag size="sm" borderRadius="full" bg="gray.100">
+                        <TagLabel>{doctor?.profession || 'Lead'}</TagLabel>
+                      </Tag>
+
+                      <Tag size="sm" borderRadius="full" bg="blue.50" color="blue.700">
+                        Lead ID: {doctor?._id?.slice(-6)}
+                      </Tag>
+
+                      <Badge colorScheme="green" borderRadius="full">
+                        {doctor?.leadStatus || 'NEW'}
+                      </Badge>
+                    </HStack>
+                  </Stack>
                 </Skeleton>
 
                 <Skeleton isLoaded={!loading}>
@@ -569,7 +765,9 @@ export default function DoctorProfilePage() {
                   </Badge>
                 </HStack>
                 <Box mt={2}>
-                  <ProfileGauge value={profileCompletion} />
+                 <HStack spacing={6} align="center">
+                  <ProfileCompletionCompact value={profileCompletion} />
+                </HStack>
                 </Box>
               </Box>
             </Box>
@@ -734,55 +932,119 @@ export default function DoctorProfilePage() {
                       </Text>
 
                       <Stack spacing={2}>
-                        {kycDocuments.map((doc) => {
-                          const color = doc.status === 'Verified' ? 'green' : doc.status === 'Rejected' ? 'red' : 'yellow'
-                          return (
-                            <HStack key={doc.key} justify="space-between" bg="white" p={3} borderRadius="md" border="1px solid" borderColor="gray.100">
-                              <HStack spacing={3} align="center">
-                                <Text fontSize="sm" color="gray.700" minW="160px">
-                                  {doc.label}
-                                </Text>
-                                <Badge colorScheme={color} borderRadius="full" px={3} py={1}>
-                                  {doc.status}
-                                </Badge>
-                              </HStack>
+  {kycDocuments.map((doc) => {
+    const color =
+      doc.status === 'Verified'
+        ? 'green'
+        : doc.status === 'Rejected'
+        ? 'red'
+        : doc.status === 'Uploaded'
+        ? 'blue'
+        : 'yellow'
 
-                              <HStack spacing={2}>
-                                <Tooltip label="Upload" hasArrow>
-                                  <IconButton
-                                    aria-label={`Upload ${doc.label}`}
-                                    icon={<ArrowUpIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleUploadDoc(doc.key, doc.label)}
-                                    isDisabled={!canEdit}
-                                  />
-                                </Tooltip>
+    const isUploading = uploadingDoc === doc.key
+    const uploadDisabled = !doctor?._id || isUploading
+    const fileInputId = `file-input-${doc.key}`
 
-                                <Tooltip label="View" hasArrow>
-                                  <IconButton
-                                    aria-label={`View ${doc.label}`}
-                                    icon={<ExternalLinkIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleViewDoc(doc.key, doc.label)}
-                                  />
-                                </Tooltip>
+    return (
+      <HStack
+        key={doc.key}
+        justify="space-between"
+        bg="white"
+        p={3}
+        borderRadius="md"
+        border="1px solid"
+        borderColor="gray.100"
+      >
+        {/* Hidden file input */}
+        <input
+          id={fileInputId}
+          ref={(el) => {
+  fileInputsRef.current[doc.key] = el
+}}
+          type="file"
+          accept="image/*,.pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null
+            uploadFile(doc.key, doc.label, file)
+          }}
+        />
 
-                                <Tooltip label="Download" hasArrow>
-                                  <IconButton
-                                    aria-label={`Download ${doc.label}`}
-                                    icon={<DownloadIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleDownloadDoc(doc.key, doc.label)}
-                                  />
-                                </Tooltip>
-                              </HStack>
-                            </HStack>
-                          )
-                        })}
-                      </Stack>
+        {/* Label + Status */}
+        <HStack spacing={3} align="center">
+          <Text fontSize="sm" color="gray.700" minW="160px">
+            {doc.label}
+          </Text>
+          <Badge colorScheme={color} borderRadius="full" px={3} py={1}>
+            {doc.status}
+          </Badge>
+        </HStack>
+
+        {/* Action Buttons */}
+        <HStack spacing={2}>
+          {/* Upload */}
+          <Tooltip label="Upload" hasArrow>
+            <IconButton
+              aria-label="Upload"
+              icon={<ArrowUpIcon />}
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const el = fileInputsRef.current[doc.key]
+                if (!el) return
+                try {
+                  el.value = ''
+                } catch {}
+                el.click()
+              }}
+              isDisabled={uploadDisabled}
+              isLoading={isUploading}
+            />
+          </Tooltip>
+
+          {/* View */}
+          <Tooltip label="View" hasArrow>
+            <IconButton
+              aria-label="View"
+              icon={<ExternalLinkIcon />}
+              size="sm"
+              variant="ghost"
+              onClick={() => handleViewDoc(doc.key)}
+              isDisabled={!buildFileUrl(doc.fileUrl)}
+            />
+          </Tooltip>
+
+          {/* Download */}
+          <Tooltip label="Download" hasArrow>
+            <IconButton
+              aria-label="Download"
+              icon={<DownloadIcon />}
+              size="sm"
+              variant="ghost"
+              onClick={() => handleDownloadDoc(doc.key)}
+              isDisabled={!buildFileUrl(doc.fileUrl)}
+            />
+          </Tooltip>
+
+          {/* Verify */}
+          {(role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'OPERATION') && (
+            <Tooltip label="Verify" hasArrow>
+              <IconButton
+                aria-label="Verify"
+                icon={<CheckCircleIcon />}
+                size="sm"
+                colorScheme="green"
+                onClick={() => verifyKyc(doc.key)}
+                isLoading={verifyingDoc === doc.key}
+              />
+            </Tooltip>
+          )}
+        </HStack>
+      </HStack>
+    )
+  })}
+</Stack>
                     </Box>
                   </TabPanel>
                 </TabPanels>
@@ -810,18 +1072,20 @@ export default function DoctorProfilePage() {
                     {remarkText.trim().length}/500
                   </Text>
                   <Button
-                    size="sm"
-                    colorScheme="blue"
-                    onClick={addRemark}
-                    isLoading={savingRemark}
-                    loadingText="Saving..."
-                    borderRadius="lg"
+  size="sm"
+  colorScheme="blue"
+  onClick={addRemark}
+  isLoading={savingRemark}
+  loadingText="Saving..."
+  borderRadius="lg"
                     isDisabled={!canEdit}
-                  >
-                    Add Comment
-                  </Button>
+
+>
+  Add Comment
+</Button>
                 </HStack>
               </Box>
+
 
               <Divider my={4} borderColor="gray.100" />
 
@@ -936,7 +1200,9 @@ export default function DoctorProfilePage() {
           <Modal isOpen={isUpdateOpen} onClose={closeUpdate} size="xl" isCentered scrollBehavior="inside">
             <ModalOverlay />
             <ModalContent borderRadius="2xl">
-              <ModalHeader>Update Doctor Lead</ModalHeader>
+              <ModalHeader>
+                Update {doctor?.profession || 'Lead'} Profile
+              </ModalHeader>
               <ModalCloseButton />
 
               <ModalBody>
@@ -1236,71 +1502,51 @@ export default function DoctorProfilePage() {
   )
 }
 
-function ProfileGauge({ value }: { value: number }) {
+function ProfileCompletionCompact({ value }: { value: number }) {
   const v = Math.max(0, Math.min(100, Math.round(value)))
-  const width = 100
-  const height = 80
-  const cx = width / 2
-  const cy = height - 6
-  const r = Math.min(width / 2 - 12, height - 20)
 
-  function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-    const angleRad = ((angleDeg - 90) * Math.PI) / 180.0
-    return { x: cx + r * Math.cos(angleRad), y: cy + r * Math.sin(angleRad) }
-  }
-  function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
-    const start = polarToCartesian(cx, cy, r, endAngle)
-    const end = polarToCartesian(cx, cy, r, startAngle)
-    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
-    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`
-  }
+  const color =
+    v < 40 ? '#e53e3e' :
+    v < 70 ? '#d69e2e' :
+    '#38a169'
 
-  const segs = [
-    { fromPct: 0, toPct: 60, color: '#2ecc71' },
-    { fromPct: 60, toPct: 80, color: '#f1c40f' }, 
-    { fromPct: 80, toPct: 100, color: '#e74c3c' }, 
-  ]
-
-  const needleAngleDeg = 180 - (v / 100) * 180 
-  const needleCoord = polarToCartesian(cx, cy, r - 6, needleAngleDeg)
-  const pivot = { x: cx, y: cy }
+  const gradient = `conic-gradient(${color} ${v * 3.6}deg, #edf2f7 0deg)`
 
   return (
-    <Box display="flex" alignItems="center" gap={4} mt={2} mb={1}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Profile completion ${v}%`}>
-        <path d={describeArc(cx, cy, r, 0, 180)} fill="none" stroke="#edf2f7" strokeWidth="14" strokeLinecap="round" />
-        {segs.map((s) => {
-          const startAngle = 180 - (s.toPct / 100) * 180
-          const endAngle = 180 - (s.fromPct / 100) * 180
-          const d = describeArc(cx, cy, r, startAngle, endAngle)
-          return <path key={s.color} d={d} fill="none" stroke={s.color} strokeWidth="14" strokeLinecap="round" />
-        })}
-
-        {[0, 25, 50, 75, 100].map((t) => {
-          const ang = 180 - (t / 100) * 180
-          const p1 = polarToCartesian(cx, cy, r + 8, ang)
-          const p2 = polarToCartesian(cx, cy, r - 6, ang)
-          return <line key={t} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#cbd5e0" strokeWidth={t === 50 ? 2.4 : 1.2} strokeLinecap="round" />
-        })}
-        <line x1={pivot.x} y1={pivot.y} x2={needleCoord.x} y2={needleCoord.y} stroke="#2D3748" strokeWidth={3.5} strokeLinecap="round" />
-        <circle cx={pivot.x} cy={pivot.y} r="6" fill="#2D3748" stroke="#ffffff" strokeWidth="1" />
-        <text x={22} y={height - 8} fontSize="12" fill="#16A34A" fontWeight="600">
-          Low
-        </text>
-        <text x={width - 42} y={height - 8} fontSize="12" fill="#E53E3E" fontWeight="600">
-          High
-        </text>
-      </svg>
+    <HStack spacing={3}>
+      <Box
+        w="64px"
+        h="64px"
+        borderRadius="50%"
+        bg={gradient}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Box
+          w="48px"
+          h="48px"
+          borderRadius="50%"
+          bg="white"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          fontWeight="bold"
+          fontSize="14px"
+        >
+          {v}%
+        </Box>
+      </Box>
 
       <Box>
-        <Text fontSize="2xl" fontWeight="900" color="gray.800">
-          {v}%
+        <Text fontSize="sm" fontWeight="700" color="gray.700">
+          Profile Completion
         </Text>
-        <Text fontSize="sm" color="gray.500">
-          Profile completion
+        <Text fontSize="xs" color={color} fontWeight="600">
+          {v < 40 ? 'Incomplete' : v < 70 ? 'Average' : 'Good Profile'}
         </Text>
       </Box>
-    </Box>
+    </HStack>
   )
 }
 
@@ -1405,31 +1651,18 @@ function VerifiedTickBadge({
   fallbackLabel: string
   fallbackColorScheme: string
 }) {
-
-  if (!isVerified) {
+  if (isVerified) {
     return (
-      <Badge colorScheme={fallbackColorScheme} borderRadius="full" px={3} py={1}>
-        {fallbackLabel}
-      </Badge>
+      <Tooltip label="Verified" hasArrow>
+        <CheckCircleIcon color="blue.500" boxSize={5} />
+      </Tooltip>
     )
   }
 
   return (
-    <Box
-      display="inline-flex"
-      alignItems="center"
-      borderRadius="full"
-      border="1px solid"
-      borderColor="blue.200"
-      bg="white"
-      px={3}
-      py={1}
-    >
-      <CheckCircleIcon color="blue.500" boxSize={4} mr={2} />
-      <Text fontSize="sm" fontWeight="700" color="blue.600">
-        Verified
-      </Text>
-    </Box>
+    <Badge colorScheme={fallbackColorScheme} borderRadius="full" px={3} py={1}>
+      {fallbackLabel}
+    </Badge>
   )
 }
 
