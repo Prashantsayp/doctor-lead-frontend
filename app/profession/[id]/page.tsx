@@ -614,39 +614,38 @@ React.useEffect(() => {
   }
 
   const handleDownloadDoc = async (docKey: string) => {
-    const doc = kycDocuments.find((d) => d.key === docKey)
-    const url = buildFileUrl(doc?.fileUrl)
-    if (!url) {
-      toast({ title: 'File not uploaded', status: 'warning' })
-      return
+  if (!doctor?._id) {
+    toast({ title: 'Lead not found', status: 'error' })
+    return
+  }
+
+  try {
+    const token = getToken()
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/download-kyc/${doctor._id}/${docKey}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }
+    )
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.message || 'Download failed')
     }
 
-    try {
-      const token = getToken()
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
-      if (!res.ok) {
-        // try to read error message JSON if available
-        let json: any = null
-        try { json = await res.json() } catch {}
-        throw new Error(json?.message || `Download failed (${res.status})`)
-      }
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      const filename = String((doc?.fileUrl || docKey).split('/').pop() || docKey)
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(blobUrl)
-      toast({ title: 'Downloaded', status: 'success' })
-    } catch (err: any) {
-      toast({ title: 'Download failed', description: err?.message || String(err), status: 'error' })
-    }
+    // Signed URL open → file download
+    window.open(data.url, '_blank')
+
+  } catch (err: any) {
+    toast({
+      title: 'Download failed',
+      description: err.message,
+      status: 'error',
+    })
   }
+}
 
   const verifyKyc = async (docType: string) => {
     if (!doctor?._id) {
@@ -932,119 +931,119 @@ React.useEffect(() => {
                       </Text>
 
                       <Stack spacing={2}>
-  {kycDocuments.map((doc) => {
-    const color =
-      doc.status === 'Verified'
-        ? 'green'
-        : doc.status === 'Rejected'
-        ? 'red'
-        : doc.status === 'Uploaded'
-        ? 'blue'
-        : 'yellow'
+                    {kycDocuments.map((doc) => {
+                      const color =
+                        doc.status === 'Verified'
+                          ? 'green'
+                          : doc.status === 'Rejected'
+                          ? 'red'
+                          : doc.status === 'Uploaded'
+                          ? 'blue'
+                          : 'yellow'
 
-    const isUploading = uploadingDoc === doc.key
-    const uploadDisabled = !doctor?._id || isUploading
-    const fileInputId = `file-input-${doc.key}`
+                      const isUploading = uploadingDoc === doc.key
+                      const uploadDisabled = !doctor?._id || isUploading
+                      const fileInputId = `file-input-${doc.key}`
 
-    return (
-      <HStack
-        key={doc.key}
-        justify="space-between"
-        bg="white"
-        p={3}
-        borderRadius="md"
-        border="1px solid"
-        borderColor="gray.100"
-      >
-        {/* Hidden file input */}
-        <input
-          id={fileInputId}
-          ref={(el) => {
-  fileInputsRef.current[doc.key] = el
-}}
-          type="file"
-          accept="image/*,.pdf"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0] ?? null
-            uploadFile(doc.key, doc.label, file)
-          }}
-        />
+                      return (
+                        <HStack
+                          key={doc.key}
+                          justify="space-between"
+                          bg="white"
+                          p={3}
+                          borderRadius="md"
+                          border="1px solid"
+                          borderColor="gray.100"
+                        >
+                          {/* Hidden file input */}
+                          <input
+                            id={fileInputId}
+                            ref={(el) => {
+                    fileInputsRef.current[doc.key] = el
+                  }}
+                            type="file"
+                            accept="image/*,.pdf"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null
+                              uploadFile(doc.key, doc.label, file)
+                            }}
+                          />
 
-        {/* Label + Status */}
-        <HStack spacing={3} align="center">
-          <Text fontSize="sm" color="gray.700" minW="160px">
-            {doc.label}
-          </Text>
-          <Badge colorScheme={color} borderRadius="full" px={3} py={1}>
-            {doc.status}
-          </Badge>
-        </HStack>
+                          {/* Label + Status */}
+                          <HStack spacing={3} align="center">
+                            <Text fontSize="sm" color="gray.700" minW="160px">
+                              {doc.label}
+                            </Text>
+                            <Badge colorScheme={color} borderRadius="full" px={3} py={1}>
+                              {doc.status}
+                            </Badge>
+                          </HStack>
 
-        {/* Action Buttons */}
-        <HStack spacing={2}>
-          {/* Upload */}
-          <Tooltip label="Upload" hasArrow>
-            <IconButton
-              aria-label="Upload"
-              icon={<ArrowUpIcon />}
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                const el = fileInputsRef.current[doc.key]
-                if (!el) return
-                try {
-                  el.value = ''
-                } catch {}
-                el.click()
-              }}
-              isDisabled={uploadDisabled}
-              isLoading={isUploading}
-            />
-          </Tooltip>
+                          {/* Action Buttons */}
+                          <HStack spacing={2}>
+                            {/* Upload */}
+                            <Tooltip label="Upload" hasArrow>
+                              <IconButton
+                                aria-label="Upload"
+                                icon={<ArrowUpIcon />}
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const el = fileInputsRef.current[doc.key]
+                                  if (!el) return
+                                  try {
+                                    el.value = ''
+                                  } catch {}
+                                  el.click()
+                                }}
+                                isDisabled={uploadDisabled}
+                                isLoading={isUploading}
+                              />
+                            </Tooltip>
 
-          {/* View */}
-          <Tooltip label="View" hasArrow>
-            <IconButton
-              aria-label="View"
-              icon={<ExternalLinkIcon />}
-              size="sm"
-              variant="ghost"
-              onClick={() => handleViewDoc(doc.key)}
-              isDisabled={!buildFileUrl(doc.fileUrl)}
-            />
-          </Tooltip>
+                            {/* View */}
+                            <Tooltip label="View" hasArrow>
+                              <IconButton
+                                aria-label="View"
+                                icon={<ExternalLinkIcon />}
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleViewDoc(doc.key)}
+                                isDisabled={!buildFileUrl(doc.fileUrl)}
+                              />
+                            </Tooltip>
 
-          {/* Download */}
-          <Tooltip label="Download" hasArrow>
-            <IconButton
-              aria-label="Download"
-              icon={<DownloadIcon />}
-              size="sm"
-              variant="ghost"
-              onClick={() => handleDownloadDoc(doc.key)}
-              isDisabled={!buildFileUrl(doc.fileUrl)}
-            />
-          </Tooltip>
+                            {/* Download */}
+                            <Tooltip label="Download" hasArrow>
+                              <IconButton
+                                aria-label="Download"
+                                icon={<DownloadIcon />}
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDownloadDoc(doc.key)}
+                                isDisabled={!buildFileUrl(doc.fileUrl)}
+                              />
+                            </Tooltip>
 
-          {/* Verify */}
-          {(role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'OPERATION') && (
-            <Tooltip label="Verify" hasArrow>
-              <IconButton
-                aria-label="Verify"
-                icon={<CheckCircleIcon />}
-                size="sm"
-                colorScheme="green"
-                onClick={() => verifyKyc(doc.key)}
-                isLoading={verifyingDoc === doc.key}
-              />
-            </Tooltip>
-          )}
-        </HStack>
-      </HStack>
-    )
-  })}
-</Stack>
+                            {/* Verify */}
+                            {(role === 'ADMIN' || role === 'SUPER_ADMIN' || role === 'OPERATION') && (
+                              <Tooltip label="Verify" hasArrow>
+                                <IconButton
+                                  aria-label="Verify"
+                                  icon={<CheckCircleIcon />}
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => verifyKyc(doc.key)}
+                                  isLoading={verifyingDoc === doc.key}
+                                />
+                              </Tooltip>
+                            )}
+                          </HStack>
+                        </HStack>
+                      )
+                    })}
+                  </Stack>
                     </Box>
                   </TabPanel>
                 </TabPanels>
