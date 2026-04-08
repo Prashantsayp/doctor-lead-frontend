@@ -459,7 +459,7 @@ const filteredItems = applyClientFilters(items)
 
 setRows(items)
 
-      setTotalDoctors(filteredItems.length)
+      setTotalDoctors(data.total)
 
       const tp = pickNumber(data?.totalPages, data?.data?.totalPages, data?.pagination?.totalPages)
       setTotalPages(tp && tp > 0 ? tp : 1)
