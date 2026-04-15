@@ -139,13 +139,32 @@ const HeroSection: React.FC = () => {
       }
 
       const items = Array.isArray(data?.items) ? data.items : []
+      const source = data?.source
+    
 
-      if (items.length === 0) {
-        router.push(`/profession-lead?mode=${m}&q=${encodeURIComponent(searchValue)}`)
-        return
+    if (items.length === 0) {
+      router.push(
+        `/profession-lead?q=${encodeURIComponent(searchValue)}`
+      )
+      return
+    }
+
+    if (source === 'OMS') {
+      toast({
+      title: 'OMS Data Loaded',
+      description: 'Customer fetched from OMS system',
+      status: 'success',
+    })
+    }
+
+
+      const id = items[0]?._id
+
+      if (id) {
+        router.push(`/profession/${id}`)
+      } else {
+        router.push(`/profession-lead?q=${encodeURIComponent(searchValue)}`)
       }
-
-      router.push(`/profession/${items[0]._id}`)
     } catch {
       toast({ title: 'Server error', status: 'error' })
     } finally {

@@ -50,7 +50,7 @@ type ProfessionFilter =
   | 'BROKER'
   | 'CHANNEL_PARTNER'
 
-type LoanStatus = 'NEW' | 'APPROVED' | 'REJECTED' | 'DISBURSED'
+type LoanStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISBURSED'
 
 type DoctorLeadRow = {
   _id: string
@@ -88,6 +88,8 @@ type DoctorLeadRow = {
   propertyValue?: number
   medicalEquipmentValue?: number
   loanStatus?: LoanStatus
+  isFromOms?: boolean
+  source?: 'OMS' | 'DB'
 }
 
 const getToken = () => {
@@ -320,7 +322,7 @@ export default function AdminDoctorsPage() {
   setActionLoadingId(id)
 
   try {
-    const res = await fetch(`${API}/doctor-lead/${id}`, {
+    const res = await fetch(`${API}/doctor-lead/update/${id}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -366,8 +368,8 @@ export default function AdminDoctorsPage() {
     (completion: number) => (completion >= 70 ? 'Low' : completion >= 40 ? 'Medium' : 'High'),
     []
   )
-const canApprove = (status?: LoanStatus) => status === 'NEW'
-const canReject = (status?: LoanStatus) => status === 'REJECTED'
+const canApprove = (status?: LoanStatus) => status === 'PENDING'
+const canReject = (status?: LoanStatus) => status === 'PENDING'
 const canDisburse = (status?: LoanStatus) => status === 'APPROVED'
 
   const [loanStatus, setLoanStatus] = React.useState<'all' | 'APPROVED' | 'REJECTED' | 'DISBURSED'>('all')
@@ -450,14 +452,15 @@ const canDisburse = (status?: LoanStatus) => status === 'APPROVED'
         return
       }
 
+      const source = data?.source
+
       const items = normalizeItems(data).map((d: any) => ({
-  ...d,
-  loanStatus: d.status || 'PENDING', // IMPORTANT
-}))
+        ...d,
+        loanStatus: d.status,
+        source: d.isFromOms ? 'OMS' : 'DB',
+      }))
 
-const filteredItems = applyClientFilters(items)
-
-setRows(items)
+      setRows(items)
 
       setTotalDoctors(data.total)
 
@@ -471,7 +474,7 @@ setRows(items)
     } finally {
       setLoading(false)
     }
-  }, [router, page, limit, debouncedQ, profession, applyClientFilters])
+  }, [router, page, limit, debouncedQ, profession])
 
   React.useEffect(() => {
     if (!isAdmin) return
@@ -513,15 +516,27 @@ setRows(items)
       }
 
       const items = normalizeItems(data).map((d: any) => ({
-      ...d,
-      loanStatus: d.status, // IMPORTANT LINE
-    }))
+        ...d,
+        loanStatus: d.status,
+        source: d.isFromOms ? 'OMS' : 'DB',
+      }))
 
+    allItems.push(...items)
+    
       const tp = pickNumber(data?.totalPages, data?.data?.totalPages, data?.pagination?.totalPages)
       pages = tp && tp > 0 ? tp : 1
       currentPage += 1
     } while (currentPage <= pages)
 
+      if (allItems.length > 5000) {
+        toast({
+          title: 'Too much data',
+          description: 'Apply filters before export',
+          status: 'warning',
+        })
+        setExporting(false)
+      return []
+    }
     return applyClientFilters(allItems)
   }, [debouncedQ, profession, applyClientFilters])
 
@@ -530,6 +545,11 @@ setRows(items)
 
   const exportAllCSV = async () => {
     try {
+      toast({
+          title: 'Preparing export...',
+          description: 'Fetching full dataset...',
+          status: 'info',
+        })
       setExporting(true)
       const data = await fetchAllDoctorsForExport()
 
@@ -540,6 +560,7 @@ setRows(items)
 
       const header = [
         'Profession',
+        'Source',
         'Name',
         'Mobile',
         'City/Pin',
@@ -557,6 +578,7 @@ setRows(items)
           const bucket = getRiskBucket(completion)
           return [
             csvEscape(d.profession ?? ''),
+            csvEscape(d.source || 'DB'),
             csvEscape(d.fullName),
             csvEscape(d.mobileNumber),
             csvEscape(d.cityOrPinCode ?? ''),
@@ -644,7 +666,7 @@ setRows(items)
                   DR
                 </Box>
                 <Box>
-                  <Heading size="md" lineHeight="1.1">
+                  <Heading size="md" lineHeight="1.1"> 
                     All Professionals
                   </Heading>
                   <HStack spacing={2} mt={1} flexWrap="wrap">
@@ -856,9 +878,24 @@ setRows(items)
                               {formatProfession(d.profession)}
                             </Badge>
                           </Td>
-
                           <Td fontWeight="800" color="gray.800">
-                            {d.fullName || '—'}
+                            <HStack spacing={2}>
+                              <Text>{d.fullName || '—'}</Text>
+
+                              {d.isFromOms ? (
+                                <Tooltip label="Fetched from OMS (external system)">
+                                  <Badge colorScheme="blue" fontSize="10px">
+                                    OMS
+                                  </Badge>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip label="From internal database">
+                                  <Badge colorScheme="green" fontSize="10px">
+                                    DB
+                                  </Badge>
+                                </Tooltip>
+                              )}
+                            </HStack>
                           </Td>
                           <Td>{d.mobileNumber || '—'}</Td>
                           <Td>{d.cityOrPinCode ?? '—'}</Td>
@@ -888,7 +925,7 @@ setRows(items)
                               py={0.5}
                               colorScheme={loanStatusColor(d.loanStatus)}
                             >
-                              {d.loanStatus === 'NEW' ? 'PENDING' : d.loanStatus}
+                              {d.loanStatus}
                             </Badge>
                           </Td>
 
@@ -899,39 +936,51 @@ setRows(items)
                               size="xs"
                               variant="ghost"
                               borderRadius="full"
-                              onClick={() => router.push(`/profession/${d._id}`)}
+                              onClick={() => {
+                                if (d._id) {
+                                  router.push(`/profession/${d._id}`)
+                                } else {
+                                  router.push(`/profession-lead?q=${d.mobileNumber}`)
+                                }
+                              }}
                             />
                           </Td>
 
                         <Td textAlign="right">
-  <Menu>
-    <MenuButton
-      as={Button}
-      size="xs"
-      rightIcon={actionLoadingId === d._id ? <Spinner size="xs" /> : <ChevronDownIcon />}
-      colorScheme="blue"
-      variant="outline"
-      borderRadius="full"
-      isDisabled={actionLoadingId === d._id}
-    >
-      Action
-    </MenuButton>
+                          <Menu>
+                            <MenuButton
+                              as={Button}
+                              size="xs"
+                              rightIcon={actionLoadingId === d._id ? <Spinner size="xs" /> : <ChevronDownIcon />}
+                              colorScheme="blue"
+                              variant="outline"
+                              borderRadius="full"
+                              isDisabled={actionLoadingId === d._id}
+                            >
+                              Action
+                            </MenuButton>
 
-    <MenuList>
-      <MenuItem color="green.600" onClick={() => handleStatusChange(d._id, 'APPROVED')}>
-  ✔ Approve
-</MenuItem>
+                            <MenuList>
+                          {canApprove(d.loanStatus) && (
+                            <MenuItem color="green.600" onClick={() => handleStatusChange(d._id, 'APPROVED')}>
+                              ✔ Approve
+                            </MenuItem>
+                          )}
 
-<MenuItem color="red.500" onClick={() => handleStatusChange(d._id, 'REJECTED')}>
-  ✖ Reject
-</MenuItem>
+                          {canReject(d.loanStatus) && (
+                            <MenuItem color="red.500" onClick={() => handleStatusChange(d._id, 'REJECTED')}>
+                              ✖ Reject
+                            </MenuItem>
+                          )}
 
-<MenuItem color="purple.600" onClick={() => handleStatusChange(d._id, 'DISBURSED')}>
-  ₹ Disburse
-</MenuItem>
-</MenuList>
-  </Menu>
-</Td>
+                          {canDisburse(d.loanStatus) && (
+                            <MenuItem color="purple.600" onClick={() => handleStatusChange(d._id, 'DISBURSED')}>
+                              ₹ Disburse
+                            </MenuItem>
+                          )}
+                        </MenuList>
+                          </Menu>
+                        </Td>
                         </Tr>
                       )
                     })}
