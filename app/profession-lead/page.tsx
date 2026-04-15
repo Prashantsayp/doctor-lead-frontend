@@ -51,6 +51,7 @@ function MultiSelect({
   onChange,
   isDisabled = false,
 }: MultiSelectProps) {
+
   const toggle = (opt: string) => {
     if (isDisabled) return
     if (value.includes(opt)) onChange(value.filter((x) => x !== opt))
@@ -341,6 +342,7 @@ const PROFESSION_CONFIG: Record<
   },
 }
 
+
 export default function NewDoctorLeadPage() {
   const toast = useToast()
   const router = useRouter()
@@ -348,6 +350,7 @@ export default function NewDoctorLeadPage() {
 
   const [profession, setProfession] = React.useState<ProfessionType>('DOCTOR')
   const [fullName, setFullName] = React.useState('')
+  const [isFromOms, setIsFromOms] = React.useState(false)
   const [registrationNumber, setRegistrationNumber] = React.useState('')
   const [panNumber, setPanNumber] = React.useState('')
   const [aadharNumber, setAadharNumber] = React.useState('')
@@ -450,6 +453,37 @@ export default function NewDoctorLeadPage() {
     if (mode === 'email') setEmail(v)
     if (mode === 'reg') setRegistrationNumber(v)
   }, [searchParams])
+
+  React.useEffect(() => {
+  const fetchOmsData = async () => {
+    if (!searchParams) return
+
+    const q = searchParams.get('q')
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/get-lead?search=${q}`
+      )
+
+      if (!res.ok) return
+
+      const data = await res.json()
+
+      if (data.source === "OMS" && data.items?.length > 0) {
+        const lead = data.items[0]
+
+        setFullName(lead.fullName || "")
+        setMobileNumber(lead.mobileNumber || "")
+        setCityOrPinCode(lead.cityOrPinCode || "")
+        setIsFromOms(true)
+      }
+    } catch (err) {
+      console.error("OMS fetch error", err)
+    }
+  }
+
+  fetchOmsData()
+}, [searchParams])
 
   React.useEffect(() => {
     setQualification([])
@@ -625,6 +659,20 @@ export default function NewDoctorLeadPage() {
             <Heading size="lg" color="blue.600" fontWeight="700">
               {selectedConfig.title}
             </Heading>
+          {isFromOms && (
+              <span style={{
+                background: '#e6f4ea',
+                color: '#137333',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                marginTop: '6px',
+                display: 'inline-block',
+                fontSize: '12px',
+                fontWeight: 500
+              }}>
+                Data from OMS
+              </span>
+            )}
             <HStack spacing={2} flexWrap="wrap">
               <Text fontSize="sm" color="gray.500">
                 Stage 1 - Basic Profile Capture
@@ -657,7 +705,11 @@ export default function NewDoctorLeadPage() {
                     size="xs"
                     mt={2}
                     variant="outline"
-                    onClick={() => router.push(`/profession/${existsState.existingId}`)}
+                    onClick={() => {
+  router.push(
+  `/profession-lead/new?mode=mobile&q=${encodeURIComponent(mobileNumber || '')}`
+)
+}}
                   >
                     Open existing profile
                   </Button>
@@ -772,6 +824,7 @@ export default function NewDoctorLeadPage() {
                 <Input
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(normalizeMobileInput(e.target.value))}
+                  // isDisabled={isFromOms}
                   onBlur={() => markTouched('mobileNumber')}
                   placeholder="Enter mobile number"
                   inputMode="numeric"

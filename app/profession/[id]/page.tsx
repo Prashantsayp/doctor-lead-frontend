@@ -623,19 +623,23 @@ React.useEffect(() => {
     const token = getToken()
 
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/download-kyc/${doctor._id}/${docKey}`,
-      {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      }
-    )
+  `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/download-kyc/${doctor._id}/${docKey}`,
+  {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  }
+)
 
-    const data = await res.json()
+const data = await res.json()
 
-    if (!res.ok) {
-      throw new Error(data.message || 'Download failed')
-    }
+if (!res.ok) {
+  throw new Error(data.message || 'Download failed')
+}
 
-    // Signed URL open → file download
+if (!data.url) {
+  throw new Error('File URL not received')
+}
+
+  
     window.open(data.url, '_blank')
 
   } catch (err: any) {
