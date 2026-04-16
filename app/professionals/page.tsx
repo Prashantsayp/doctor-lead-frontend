@@ -830,7 +830,7 @@ const canDisburse = (status?: LoanStatus) => status === 'APPROVED'
           </HStack>
         </Flex>
 
-        <Box mt={4} bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="hidden">
+        <Box mt={4} bg="white" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="visible">
           <Box p={{ base: 4, md: 5 }}>
             {loading ? (
               <HStack py={10} justify="center">
@@ -948,38 +948,61 @@ const canDisburse = (status?: LoanStatus) => status === 'APPROVED'
 
                         <Td textAlign="right">
                           <Menu>
-                            <MenuButton
-                              as={Button}
-                              size="xs"
-                              rightIcon={actionLoadingId === d._id ? <Spinner size="xs" /> : <ChevronDownIcon />}
-                              colorScheme="blue"
-                              variant="outline"
-                              borderRadius="full"
-                              isDisabled={actionLoadingId === d._id}
-                            >
-                              Action
-                            </MenuButton>
+                          <MenuButton
+                            as={IconButton}
+                            icon={<ChevronDownIcon />}
+                            size="sm"
+                            variant="ghost"
+                            borderRadius="full"
+                            _hover={{ bg: 'gray.100' }}
+                            _active={{ bg: 'gray.200' }}
+                            isDisabled={actionLoadingId === d._id}
+                          />
 
-                            <MenuList>
-                          {canApprove(d.loanStatus) && (
-                            <MenuItem color="green.600" onClick={() => handleStatusChange(d._id, 'APPROVED')}>
-                              ✔ Approve
-                            </MenuItem>
-                          )}
+                          <MenuList
+                            zIndex={9999}
+                            borderRadius="lg"
+                            boxShadow="xl"
+                            p={1}
+                            minW="160px"
+                          >
+                            {canApprove(d.loanStatus) && (
+                              <MenuItem
+                                color="green.600"
+                                fontWeight="600"
+                                borderRadius="md"
+                                _hover={{ bg: 'green.50' }}
+                                onClick={() => handleStatusChange(d._id, 'APPROVED')}
+                              >
+                                ✔ Approve
+                              </MenuItem>
+                            )}
 
-                          {canReject(d.loanStatus) && (
-                            <MenuItem color="red.500" onClick={() => handleStatusChange(d._id, 'REJECTED')}>
-                              ✖ Reject
-                            </MenuItem>
-                          )}
+                            {canReject(d.loanStatus) && (
+                              <MenuItem
+                                color="red.500"
+                                fontWeight="600"
+                                borderRadius="md"
+                                _hover={{ bg: 'red.50' }}
+                                onClick={() => handleStatusChange(d._id, 'REJECTED')}
+                              >
+                                ✖ Reject
+                              </MenuItem>
+                            )}
 
-                          {canDisburse(d.loanStatus) && (
-                            <MenuItem color="purple.600" onClick={() => handleStatusChange(d._id, 'DISBURSED')}>
-                              ₹ Disburse
-                            </MenuItem>
-                          )}
-                        </MenuList>
-                          </Menu>
+                            {canDisburse(d.loanStatus) && (
+                              <MenuItem
+                                color="purple.600"
+                                fontWeight="600"
+                                borderRadius="md"
+                                _hover={{ bg: 'purple.50' }}
+                                onClick={() => handleStatusChange(d._id, 'DISBURSED')}
+                              >
+                                ₹ Disburse
+                              </MenuItem>
+                            )}
+                          </MenuList>
+                        </Menu>
                         </Td>
                         </Tr>
                       )
