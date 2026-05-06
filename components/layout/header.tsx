@@ -132,7 +132,6 @@ export const Header = (props: HeaderProps) => {
                     </Text>
                   </HStack>
                 </MenuButton>
-
                 <MenuList borderRadius="xl" py={2} minW="240px">
                   {isAdmin && (
                     <>
@@ -156,7 +155,18 @@ export const Header = (props: HeaderProps) => {
                       <MenuDivider />
                     </>
                   )}
+                  <MenuItem
+                    onClick={() => router.push("/dashboard/credit/lender")}
+                  >
+                    🏦 Lender List
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => router.push("/dashboard/credit/policy/upload")}
+                  >
+                    📄 Upload Policy
+                  </MenuItem>
 
+                  <MenuDivider />
                   <MenuItem onClick={goProfile} icon={<FiUser />}>
                     View Profile
                   </MenuItem>

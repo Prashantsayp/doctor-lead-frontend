@@ -158,7 +158,6 @@ export default function DoctorProfilePage() {
   const [remarks, setRemarks] = React.useState<RemarksItem[]>([])
   const [editingRemarkId, setEditingRemarkId] = React.useState<string | null>(null)
   const [editRemarkText, setEditRemarkText] = React.useState('')
-
   const [isUpdateOpen, setIsUpdateOpen] = React.useState(false)
   const [savingUpdate, setSavingUpdate] = React.useState(false)
   const [updateTab, setUpdateTab] = React.useState<UpdateTab>('basic')
@@ -176,7 +175,10 @@ export default function DoctorProfilePage() {
   const [verifyingDoc, setVerifyingDoc] = React.useState<string | null>(null)
   const canEdit = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'OPERATION'
   const canUpload = role !== null && role !== undefined
-
+  const [bankFile, setBankFile] = React.useState<File | null>(null)
+  const [bankPassword, setBankPassword] = React.useState('')
+  const [cibilFile, setCibilFile] = React.useState<File | null>(null)
+  const [financialData, setFinancialData] = React.useState<Record<string, any> | null>(null)
   const getToken = () => {
     if (typeof window === 'undefined') return null
     const t = localStorage.getItem('token')
@@ -603,6 +605,91 @@ React.useEffect(() => {
   }
 }
 
+const uploadBankStatement = async () => {
+  if (!bankFile || !doctor?._id) {
+    toast({ title: 'Select file first', status: 'warning' })
+    return
+  }
+
+  const token = localStorage.getItem('token')
+
+  const formData = new FormData()
+  formData.append('file', bankFile)
+  formData.append('password', bankPassword)
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/upload-financial/${doctor._id}/bankStatement`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    )
+
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data.message)
+
+    toast({
+      title: 'Bank Statement Processed',
+      status: 'success',
+    })
+
+    console.log('RESULT:', data)
+
+  } catch (err: any) {
+    toast({
+      title: 'Upload failed',
+      description: err.message,
+      status: 'error',
+    })
+  }
+}
+
+const uploadCibil = async () => {
+  if (!cibilFile || !doctor?._id) {
+    toast({ title: 'Select file first', status: 'warning' })
+    return
+  }
+
+  const token = localStorage.getItem('token')
+
+  const formData = new FormData()
+  formData.append('file', cibilFile)
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/upload-financial/${doctor._id}/cibil`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    )
+
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data.message)
+
+    toast({
+      title: 'CIBIL Uploaded',
+      status: 'success',
+    })
+
+  } catch (err: any) {
+    toast({
+      title: 'Upload failed',
+      description: err.message,
+      status: 'error',
+    })
+  }
+}
+
   const handleViewDoc = (docKey: string) => {
     const doc = kycDocuments.find((d) => d.key === docKey)
     const url = buildFileUrl(doc?.fileUrl)
@@ -866,6 +953,7 @@ if (!data.url) {
                   <Tab>Assets</Tab>
                   <Tab>Credit</Tab>
                   <Tab>KYC</Tab>
+                  <Tab>Financial Docs</Tab>
                 </TabList>
 
                 <TabPanels mt={4}>
@@ -927,7 +1015,6 @@ if (!data.url) {
                       />
                     </Box>
                   </TabPanel>
-
                   <TabPanel px={0}>
                     <Box border="1px solid" borderColor="gray.200" borderRadius="xl" overflow="hidden" p={3}>
                       <Text fontSize="sm" color="gray.600" mb={3}>
@@ -1049,7 +1136,160 @@ if (!data.url) {
                     })}
                   </Stack>
                     </Box>
-                  </TabPanel>
+                </TabPanel>
+                {/* ✅ Financial Docs Panel START */}
+                <TabPanel px={0}>
+                  <Stack spacing={6}>
+                    {financialData?.data && (
+                          <Box
+                            bg="green.50"
+                            border="1px solid"
+                            borderColor="green.200"
+                            borderRadius="2xl"
+                            p={5}
+                          >
+                            <Heading size="sm" mb={3} color="green.700">
+                              Bank Analysis Result
+                            </Heading>
+
+                            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                              <Stat>
+                                <Text fontSize="xs" color="gray.500">
+                                  Monthly Income
+                                </Text>
+
+                                <Text fontWeight="bold">
+                                  ₹{financialData.data?.parsed?.monthly_income || 0}
+                                </Text>
+                              </Stat>
+
+                              <Stat>
+                                <Text fontSize="xs" color="gray.500">
+                                  EMI
+                                </Text>
+
+                                <Text fontWeight="bold">
+                                  ₹{financialData.data?.parsed?.emi_outflow || 0}
+                                </Text>
+                              </Stat>
+
+                              <Stat>
+                                <Text fontSize="xs" color="gray.500">
+                                  CIBIL
+                                </Text>
+
+                                <Text fontWeight="bold">
+                                  {financialData.data?.eligibility?.cibil}
+                                </Text>
+                              </Stat>
+
+                              <Stat>
+                                <Text fontSize="xs" color="gray.500">
+                                  FOIR
+                                </Text>
+
+                                <Text fontWeight="bold">
+                                  {financialData.data?.eligibility?.foir}%
+                                </Text>
+                              </Stat>
+                            </SimpleGrid>
+
+                            <Badge
+                              mt={4}
+                              colorScheme={
+                                financialData.data?.eligibility?.status === "Eligible"
+                                  ? "green"
+                                  : "red"
+                              }
+                              borderRadius="full"
+                              px={3}
+                              py={1}
+                            >
+                              {financialData.data?.eligibility?.status}
+                            </Badge>
+                          </Box>
+                        )}
+
+                    {/* 🔥 UPLOAD SECTION */}
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={5}>
+
+                      {/* BANK CARD */}
+                      <Box
+                        bg="white"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="2xl"
+                        p={5}
+                        boxShadow="sm"
+                      >
+                        <Heading size="sm" mb={3}>
+                          Bank Statement
+                        </Heading>
+
+                        <Stack spacing={3}>
+                          <Input
+                            type="file"
+                            size="sm"
+                            borderRadius="lg"
+                            onChange={(e) => setBankFile(e.target.files?.[0] || null)}
+                          />
+
+                          <Input
+                            size="sm"
+                            borderRadius="lg"
+                            placeholder="PDF Password (optional)"
+                            value={bankPassword}
+                            onChange={(e) => setBankPassword(e.target.value)}
+                          />
+
+                          <Button
+                            size="sm"
+                            colorScheme="blue"
+                            borderRadius="lg"
+                            onClick={uploadBankStatement}
+                            isDisabled={!bankFile}
+                          >
+                            Upload & Analyze
+                          </Button>
+                        </Stack>
+                      </Box>
+
+                      {/* CIBIL CARD */}
+                      <Box
+                        bg="white"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="2xl"
+                        p={5}
+                        boxShadow="sm"
+                      >
+                        <Heading size="sm" mb={3}>
+                          CIBIL Report
+                        </Heading>
+
+                        <Stack spacing={3}>
+                          <Input
+                            type="file"
+                            size="sm"
+                            borderRadius="lg"
+                            onChange={(e) => setCibilFile(e.target.files?.[0] || null)}
+                          />
+
+                          <Button
+                            size="sm"
+                            colorScheme="green"
+                            borderRadius="lg"
+                            onClick={uploadCibil}
+                            isDisabled={!cibilFile}
+                          >
+                            Upload CIBIL
+                          </Button>
+                        </Stack>
+                      </Box>
+
+                    </SimpleGrid>
+                  </Stack>
+                </TabPanel>
                 </TabPanels>
               </Tabs>
             </Box>
@@ -1075,17 +1315,16 @@ if (!data.url) {
                     {remarkText.trim().length}/500
                   </Text>
                   <Button
-  size="sm"
-  colorScheme="blue"
-  onClick={addRemark}
-  isLoading={savingRemark}
-  loadingText="Saving..."
-  borderRadius="lg"
+                    size="sm"
+                    colorScheme="blue"
+                    onClick={addRemark}
+                    isLoading={savingRemark}
+                    loadingText="Saving..."
+                    borderRadius="lg"
                     isDisabled={!canEdit}
-
->
-  Add Comment
-</Button>
+                    >
+                      Add Comment
+                </Button>
                 </HStack>
               </Box>
 
