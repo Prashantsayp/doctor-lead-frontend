@@ -268,7 +268,7 @@ export default function BulkSyncPage() {
 
   React.useEffect(() => {
   removeSelectedFile()
-  }, [profession, removeSelectedFile])
+  }, [profession])
 
   return (
     <Box minH="100vh" bg="gray.50" pt="90px" pb={{ base: 10, md: 14 }}>
