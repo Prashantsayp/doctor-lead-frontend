@@ -9,6 +9,7 @@ import {
   Text,
   VStack,
   Spinner,
+  Container,
 } from '@chakra-ui/react'
 
 export default function UploadPolicyPage() {
@@ -45,26 +46,53 @@ export default function UploadPolicyPage() {
   }
 
   return (
-    <Box p={6}>
-      <VStack spacing={4} align="start">
-        <Input
-          type="file"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
+    <Box
+      // ml={{ base: 0, md: '240px' }}
+      bg="gray.50"
+      pt="0.0px"
+      minH="100vh"
+    >
+      {/* 🔥 navbar space */}
+      <Box pt="calc(64px + 16px)">
 
-        <Button colorScheme="blue" onClick={handleUpload}>
-          Upload Policy
-        </Button>
+        <Container maxW="900px" mx="auto" px={{ base: 4, md: 6 }}>
 
-        {loading && <Spinner />}
+          <VStack spacing={5} align="stretch">
 
-        {result && (
-          <Box bg="gray.100" p={4} borderRadius="md">
-            <Text fontWeight="bold">Extracted Data:</Text>
-            <pre>{JSON.stringify(result.extracted, null, 2)}</pre>
-          </Box>
-        )}
-      </VStack>
+            <Text fontSize="2xl" fontWeight="bold">
+              📄 Upload Policy
+            </Text>
+
+            <Box bg="white" p={6} rounded="xl" shadow="md">
+
+              <VStack spacing={4} align="stretch">
+
+                <Input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+
+                <Button colorScheme="blue" onClick={handleUpload}>
+                  Upload Policy
+                </Button>
+
+                {loading && <Spinner />}
+
+                {result && (
+                  <Box bg="gray.100" p={4} borderRadius="md">
+                    <Text fontWeight="bold">Extracted Data:</Text>
+                    <pre>{JSON.stringify(result.extracted, null, 2)}</pre>
+                  </Box>
+                )}
+
+              </VStack>
+
+            </Box>
+
+          </VStack>
+
+        </Container>
+      </Box>
     </Box>
   )
 }

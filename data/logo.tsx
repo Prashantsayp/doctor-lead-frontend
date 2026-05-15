@@ -21,12 +21,16 @@ export const Logo: React.FC<HTMLChakraProps<'div'>> = (props) => {
 
       {/* Brand Name */}
       <Text
-        fontSize="lg"
-        fontWeight="700"
-        color="blue.600"
-        letterSpacing="0.2px"
-      >
-        CustomerIntelligence
+          fontSize="md"
+          fontWeight="700"
+          color="blue.600"
+          letterSpacing="0.2px"
+          noOfLines={1}
+          overflow="hidden"
+          textOverflow="ellipsis"
+          maxW="125px"
+        >
+        Credit Engine
 
       </Text>
     </HStack>

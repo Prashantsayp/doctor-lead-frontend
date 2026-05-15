@@ -14,11 +14,6 @@ export type HeaderLink = {
 }
 
 const ALL_HEADER_LINKS: HeaderLink[] = [
-  // ✅ ab yaha links add/uncomment karo
-  // { label: 'Portal', href: '/' },
-  // { label: 'Bulk Sync', href: '/bulk-sync' },
-  // { label: 'Underwriting', href: '/underwriting' },
-  // { label: 'Partners', href: '/partners' },
 ]
 
 const siteConfig = {
@@ -38,7 +33,6 @@ const siteConfig = {
   },
 
   header: {
-    // ✅ static + typed (never[] issue gone)
     links: ALL_HEADER_LINKS,
     user: {
       name: 'Admin',
