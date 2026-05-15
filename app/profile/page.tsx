@@ -2,15 +2,11 @@
 
 import * as React from 'react'
 import {
-  Avatar,
-  Badge,
   Box,
   Button,
   Container,
-  Divider,
   FormControl,
   FormLabel,
-  Heading,
   HStack,
   Icon,
   Input,
@@ -18,7 +14,6 @@ import {
   Stack,
   Text,
   useToast,
-  VStack,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -28,10 +23,25 @@ import {
   ModalCloseButton,
   SimpleGrid,
   Select,
+  Flex,
+  VStack,
+  Divider,
 } from '@chakra-ui/react'
 import { useRouter } from 'next/navigation'
-import { FiMail, FiUser, FiBriefcase, FiShield, FiEdit3 } from 'react-icons/fi'
+import {
+  FiMail,
+  FiUser,
+  FiBriefcase,
+  FiShield,
+  FiEdit3,
+  FiArrowLeft,
+  FiCamera,
+  FiKey,
+  FiLogOut,
+} from 'react-icons/fi'
 import { jwtDecode } from 'jwt-decode'
+
+/* ================= Types (UNCHANGED) ================= */
 
 type AppRole = 'SUPER_ADMIN' | 'ADMIN' | 'OPERATION' | 'SALES' | 'USER'
 type UserStatus = 'ACTIVE' | 'INACTIVE'
@@ -46,10 +56,171 @@ type MeUser = {
   createdAt?: string
 }
 
+/* ================= Design Tokens ================= */
+
+const T = {
+  bg: '#f6f7fb',
+  surface: '#ffffff',
+  border: '#e8eaf0',
+  borderStrong: '#d1d5e0',
+  text: '#111827',
+  textSub: '#6b7280',
+  textMuted: '#9ca3af',
+  blue: '#2563eb',
+  blueLight: '#eff6ff',
+  blueDark: '#1d4ed8',
+  green: '#16a34a',
+  greenLight: '#f0fdf4',
+  red: '#dc2626',
+  redLight: '#fef2f2',
+  amber: '#d97706',
+  amberLight: '#fffbeb',
+  purple: '#7c3aed',
+  purpleLight: '#f5f3ff',
+  radius: '14px',
+  radiusSm: '10px',
+  shadow: '0 1px 3px rgba(0,0,0,0.06)',
+  shadowMd: '0 4px 20px rgba(0,0,0,0.08)',
+}
+
+/* ================= Role config ================= */
+
+const ROLE_CONFIG: Record<AppRole, { bg: string; text: string; label: string; dot: string }> = {
+  SUPER_ADMIN: { bg: T.redLight,    text: T.red,    label: 'Super Admin', dot: '#ef4444' },
+  ADMIN:       { bg: T.purpleLight, text: T.purple, label: 'Admin',       dot: '#a855f7' },
+  OPERATION:   { bg: T.blueLight,   text: T.blue,   label: 'Operation',   dot: '#3b82f6' },
+  SALES:       { bg: T.greenLight,  text: T.green,  label: 'Sales',       dot: '#22c55e' },
+  USER:        { bg: '#f1f5f9',     text: T.textSub, label: 'User',       dot: '#94a3b8' },
+}
+
+/* ================= Input style ================= */
+
+const inputSx = {
+  bg: T.surface,
+  border: '1px solid',
+  borderColor: T.border,
+  borderRadius: T.radiusSm,
+  fontSize: '13px',
+  fontWeight: '500',
+  h: '38px',
+  _focus: { borderColor: T.blue, boxShadow: `0 0 0 3px ${T.blueLight}` },
+  _hover: { borderColor: T.borderStrong },
+  _placeholder: { color: T.textMuted },
+}
+
+/* ================= Sub-components ================= */
+
+function RolePill({ role }: { role: AppRole }) {
+  const c = ROLE_CONFIG[role] || ROLE_CONFIG.USER
+  return (
+    <Box px={2.5} py={0.5} bg={c.bg} borderRadius="full" display="inline-flex" alignItems="center" gap="5px">
+      <Box w="5px" h="5px" borderRadius="full" bg={c.dot} flexShrink={0} />
+      <Text fontSize="11px" fontWeight="700" color={c.text}>{c.label}</Text>
+    </Box>
+  )
+}
+
+function MetaRow({ label, value, loading }: { label: string; value: string; loading: boolean }) {
+  return (
+    <Box>
+      <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.6px" mb={0.5}>
+        {label}
+      </Text>
+      <Skeleton isLoaded={!loading}>
+        <Text fontSize="13px" fontWeight="600" color={T.text}>{value || '—'}</Text>
+      </Skeleton>
+    </Box>
+  )
+}
+
+function SidebarActionBtn({
+  icon, label, onClick, danger,
+}: {
+  icon: any; label: string; onClick?: () => void; danger?: boolean
+}) {
+  return (
+    <Box
+      as="button"
+      display="flex"
+      alignItems="center"
+      gap="8px"
+      w="100%"
+      px={3} py={2.5}
+      borderRadius={T.radiusSm}
+      border="1px solid"
+      borderColor={danger ? '#fecaca' : T.border}
+      bg={danger ? T.redLight : T.surface}
+      color={danger ? T.red : T.textSub}
+      fontSize="12px"
+      fontWeight="600"
+      cursor="pointer"
+      transition="all 0.15s"
+      _hover={{
+        borderColor: danger ? T.red : T.blue,
+        color: danger ? T.red : T.blue,
+        bg: danger ? '#fee2e2' : T.blueLight,
+      }}
+      onClick={onClick}
+    >
+      <Icon as={icon} boxSize={3.5} />
+      {label}
+    </Box>
+  )
+}
+
+/* ================= Photo Avatar ================= */
+
+function ProfilePhoto({
+  name, loading,
+}: {
+  name: string; loading: boolean
+}) {
+  const initials = (name || 'U').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+
+  return (
+    <Box position="relative" mx="auto" w="fit-content">
+      <Skeleton isLoaded={!loading} borderRadius="full">
+        <Box
+          w="90px" h="90px"
+          borderRadius="full"
+          background="linear-gradient(135deg, #c7d2fe 0%, #ddd6fe 50%, #e0e7ff 100%)"
+          display="flex" alignItems="center" justifyContent="center"
+          border="3px solid white"
+          boxShadow="0 0 0 3px #e0e7ff, 0 4px 16px rgba(79,70,229,0.2)"
+          mx="auto"
+        >
+          <Text fontSize="28px" fontWeight="800" color="#4f46e5" letterSpacing="-1px">
+            {initials}
+          </Text>
+        </Box>
+      </Skeleton>
+      {/* Camera overlay */}
+      <Box
+        position="absolute"
+        bottom="2px" right="2px"
+        w="24px" h="24px"
+        borderRadius="full"
+        bg={T.blue}
+        border="2px solid white"
+        display="flex" alignItems="center" justifyContent="center"
+        cursor="pointer"
+        boxShadow={T.shadow}
+        _hover={{ bg: T.blueDark }}
+        transition="all 0.15s"
+      >
+        <Icon as={FiCamera} boxSize={2.5} color="white" />
+      </Box>
+    </Box>
+  )
+}
+
+/* ================= Main Page ================= */
+
 export default function ProfilePage() {
   const toast = useToast()
   const router = useRouter()
 
+  /* ====== ALL STATE UNCHANGED ====== */
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [me, setMe] = React.useState<MeUser | null>(null)
@@ -76,31 +247,24 @@ export default function ProfilePage() {
   const canEditRoleStatus = myRole === 'ADMIN' || myRole === 'SUPER_ADMIN'
 
   const fetchMe = React.useCallback(async () => {
-    if (!token) {
-      router.replace('/login')
-      return
-    }
-
+    if (!token) { router.replace('/login'); return }
     setLoading(true)
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json().catch(() => ({}))
-
       if (!res.ok) {
         toast({ title: data?.message || 'Please login again', status: 'error' })
         localStorage.clear()
         router.replace('/login')
         return
       }
-
       setMe(data)
       setName(data?.name || '')
       setDesignation(data?.designation || '')
       setRole((data?.role as AppRole) || 'USER')
       setStatus((data?.status as UserStatus) || 'ACTIVE')
-
       localStorage.setItem('userName', data?.name || 'User')
       window.dispatchEvent(new Event('auth-change'))
     } catch {
@@ -110,9 +274,7 @@ export default function ProfilePage() {
     }
   }, [token, router, toast])
 
-  React.useEffect(() => {
-    fetchMe()
-  }, [fetchMe])
+  React.useEffect(() => { fetchMe() }, [fetchMe])
 
   const openEdit = () => {
     if (!me) return
@@ -123,52 +285,25 @@ export default function ProfilePage() {
     setIsEditOpen(true)
   }
 
-  const closeEdit = () => {
-    if (saving) return
-    setIsEditOpen(false)
-  }
+  const closeEdit = () => { if (saving) return; setIsEditOpen(false) }
 
   const save = async () => {
     if (!token) return
-
-    if (!name.trim()) {
-      toast({ title: 'Name required', status: 'warning' })
-      return
-    }
-
+    if (!name.trim()) { toast({ title: 'Name required', status: 'warning' }); return }
     setSaving(true)
     try {
-      const payload: any = {
-        name: name.trim(),
-        designation: designation.trim(),
-      }
-
-      // ✅ only ADMIN/SUPER_ADMIN can change role/status
-      if (canEditRoleStatus) {
-        payload.role = role
-        payload.status = status
-      }
-
+      const payload: any = { name: name.trim(), designation: designation.trim() }
+      if (canEditRoleStatus) { payload.role = role; payload.status = status }
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       })
-
       const data = await res.json().catch(() => ({}))
-
-      if (!res.ok) {
-        toast({ title: data?.message || 'Update failed', status: 'error' })
-        return
-      }
-
+      if (!res.ok) { toast({ title: data?.message || 'Update failed', status: 'error' }); return }
       setMe(data)
       localStorage.setItem('userName', data?.name || 'User')
       window.dispatchEvent(new Event('auth-change'))
-
       toast({ title: 'Profile updated', status: 'success' })
       setIsEditOpen(false)
     } catch {
@@ -178,291 +313,427 @@ export default function ProfilePage() {
     }
   }
 
-  const roleColor =
-    me?.role === 'SUPER_ADMIN'
-      ? 'red'
-      : me?.role === 'ADMIN'
-      ? 'purple'
-      : me?.role === 'OPERATION'
-      ? 'blue'
-      : me?.role === 'SALES'
-      ? 'green'
-      : 'gray'
+  /* ====== Derived ====== */
+  const roleConf = me?.role ? ROLE_CONFIG[me.role] : ROLE_CONFIG.USER
+  const isActive = me?.status === 'ACTIVE'
+  const memberSince = me?.createdAt
+    ? new Date(me.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null
 
-  const statusColor = me?.status === 'ACTIVE' ? 'green' : 'red'
+  const logout = () => {
+    localStorage.clear()
+    window.dispatchEvent(new Event('auth-change'))
+    router.replace('/login')
+  }
 
-  return (
-    <Box bg="gray.50" minH="100vh" py={{ base: 0, md: 0 }}>
-      <Container maxW="container.md">
-        <Box borderRadius="3xl" overflow="hidden" border="1px solid" borderColor="gray.200" boxShadow="sm" bg="white">
-          {/* Header */}
-          <Box px={{ base: 5, md: 7 }} py={{ base: 6, md: 7 }} bgGradient="linear(to-r, purple.700, blue.700)">
-            <HStack justify="space-between" align="start" flexWrap="wrap" gap={4}>
-              <HStack spacing={4}>
-                <Skeleton isLoaded={!loading}>
-                  <Avatar
-                    size="lg"
-                    name={me?.name || 'User'}
-                    bg="whiteAlpha.300"
-                    color="white"
-                    border="2px solid"
-                    borderColor="whiteAlpha.500"
-                  />
-                </Skeleton>
+  /* ====== RENDER ====== */
 
-                <Box color="white">
-                  <Skeleton isLoaded={!loading}>
-                    <Heading size="md" lineHeight="1.1">
-                      {me?.name || 'My Profile'}
-                    </Heading>
-                  </Skeleton>
-
-                  <Skeleton isLoaded={!loading}>
-                    <Text mt={1} fontSize="sm" color="whiteAlpha.800">
-                      View your details. Edit only when needed.
-                    </Text>
-                  </Skeleton>
-
-                  <HStack mt={3} spacing={2} flexWrap="wrap">
-                    <Skeleton isLoaded={!loading}>
-                      <Badge bg="whiteAlpha.300" color="white" borderRadius="full" px={3} py={1}>
-                        <HStack spacing={1}>
-                          <Icon as={FiShield} />
-                          <Text fontSize="xs" fontWeight="800">
-                            {me?.role || '—'}
-                          </Text>
-                        </HStack>
-                      </Badge>
-                    </Skeleton>
-
-                    <Skeleton isLoaded={!loading}>
-                      <Badge bg="whiteAlpha.300" color="white" borderRadius="full" px={3} py={1}>
-                        Status: <b>{me?.status || '—'}</b>
-                      </Badge>
-                    </Skeleton>
-                  </HStack>
-                </Box>
-              </HStack>
-
-              <Button
-                leftIcon={<Icon as={FiEdit3} />}
-                colorScheme="blackAlpha"
-                variant="solid"
-                borderRadius="xl"
-                bg="whiteAlpha.300"
-                _hover={{ bg: 'whiteAlpha.400' }}
-                onClick={openEdit}
-                isDisabled={loading || !me}
-              >
-                Edit Profile
-              </Button>
-            </HStack>
-          </Box>
-
-          {/* View-only body */}
-          <Box px={{ base: 5, md: 7 }} py={{ base: 5, md: 6 }}>
-            <HStack spacing={2} mb={4}>
-              <Badge colorScheme={roleColor as any} borderRadius="full" px={3} py={1}>
-                Role: {me?.role || '—'}
-              </Badge>
-              <Badge colorScheme={statusColor as any} borderRadius="full" px={3} py={1}>
-                {me?.status || '—'}
-              </Badge>
-            </HStack>
-
-            <Divider mb={5} />
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-              <InfoCard label="Name" value={me?.name || '—'} icon={FiUser} loading={loading} />
-              <InfoCard label="Designation" value={me?.designation?.trim() ? me.designation : '—'} icon={FiBriefcase} loading={loading} />
-              <InfoCard label="Email" value={me?.email || '—'} icon={FiMail} loading={loading} spanFull />
-            </SimpleGrid>
-
-            <Box mt={6}>
-              <Button variant="outline" borderRadius="xl" onClick={() => router.back()}>
-                Back
-              </Button>
-            </Box>
-          </Box>
-        </Box>
-
-        {/* ✅ Edit Modal */}
-   <Modal isOpen={isEditOpen} onClose={closeEdit} size="lg" isCentered>
-  <ModalOverlay />
-  <ModalContent borderRadius="2xl" maxH="80vh">
-    <ModalHeader py={3}>Edit Profile</ModalHeader>
-    <ModalCloseButton isDisabled={saving} />
-
-    {/* Scrollable Body */}
-    <ModalBody py={3} overflowY="auto">
-      <Stack spacing={3}>
-        <FormControl>
-          <FormLabel fontSize="sm" mb={1}>
-            Name
-          </FormLabel>
-          <Input
-            size="sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            borderRadius="lg"
-            bg="gray.50"
-          />
-        </FormControl>
-
-        <FormControl>
-          <FormLabel fontSize="sm" mb={1}>
-            Designation
-          </FormLabel>
-          <Input
-            size="sm"
-            value={designation}
-            onChange={(e) => setDesignation(e.target.value)}
-            borderRadius="lg"
-            bg="gray.50"
-          />
-        </FormControl>
-
-        {/* Compact Access Controls */}
-        <Box
-          p={3}
-          border="1px solid"
-          borderColor="gray.200"
-          borderRadius="xl"
-          bg="gray.50"
-          opacity={canEditRoleStatus ? 1 : 0.7}
-        >
-          <Text fontSize="xs" fontWeight="700" color="gray.600" mb={2}>
-            Access Controls
-          </Text>
-
-          <Stack spacing={3}>
-            <FormControl isDisabled={!canEditRoleStatus}>
-              <FormLabel fontSize="xs" mb={1}>
-                Role
-              </FormLabel>
-              <Select
-                size="sm"
-                value={role}
-                onChange={(e) => setRole(e.target.value as AppRole)}
-                borderRadius="lg"
-                bg="white"
-              >
-                <option value="USER">USER</option>
-                <option value="SALES">SALES</option>
-                <option value="OPERATION">OPERATION</option>
-                <option value="ADMIN">ADMIN</option>
-                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-              </Select>
-            </FormControl>
-
-            <FormControl isDisabled={!canEditRoleStatus}>
-              <FormLabel fontSize="xs" mb={1}>
-                Status
-              </FormLabel>
-              <Select
-                size="sm"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as UserStatus)}
-                borderRadius="lg"
-                bg="white"
-              >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </Select>
-            </FormControl>
-          </Stack>
-        </Box>
-
-        <FormControl>
-          <FormLabel fontSize="sm" mb={1}>
-            Email
-          </FormLabel>
-          <Input
-            size="sm"
-            value={me?.email || ''}
-            isReadOnly
-            borderRadius="lg"
-            bg="gray.100"
-          />
-        </FormControl>
-      </Stack>
-    </ModalBody>
-
-    <ModalFooter py={3}>
-      <HStack w="100%" justify="space-between">
-        <Button size="sm" variant="ghost" onClick={closeEdit} isDisabled={saving}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          colorScheme="blue"
-          onClick={save}
-          isLoading={saving}
-          loadingText="Saving..."
-          borderRadius="lg"
-          px={6}
-        >
-          Save
-        </Button>
-      </HStack>
-    </ModalFooter>
-  </ModalContent>
-</Modal>
-
-      </Container>
-    </Box>
-  )
-}
-
-function InfoCard({
-  label,
-  value,
-  icon,
-  loading,
-  spanFull,
-}: {
-  label: string
-  value: string
-  icon: any
-  loading: boolean
-  spanFull?: boolean
-}) {
   return (
     <Box
-      border="1px solid"
-      borderColor="gray.200"
-      borderRadius="2xl"
-      p={4}
-      bg="white"
-      boxShadow="sm"
-      gridColumn={spanFull ? { base: 'auto', md: '1 / -1' } : undefined}
+      bg={T.bg}
+      minH="100vh"
+      py={6}
+      fontFamily="'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif"
     >
-      <HStack spacing={3}>
-        <Box
-          w="36px"
-          h="36px"
-          borderRadius="xl"
-          bg="gray.50"
-          border="1px solid"
-          borderColor="gray.200"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Icon as={icon} color="gray.600" />
-        </Box>
+      <Container maxW="900px" px={{ base: 4, md: 6 }}>
 
-        <Box flex="1">
-          <Text fontSize="xs" color="gray.500" fontWeight="700">
-            {label}
-          </Text>
-          <Skeleton isLoaded={!loading}>
-            <Text fontSize="md" fontWeight="800" color="gray.800" mt={1} noOfLines={1}>
-              {value}
-            </Text>
-          </Skeleton>
-        </Box>
-      </HStack>
+        {/* Back */}
+        <Button
+          size="sm" h="34px" px={3}
+          fontSize="12px" fontWeight="600"
+          variant="ghost"
+          borderRadius={T.radiusSm}
+          color={T.textMuted}
+          leftIcon={<Icon as={FiArrowLeft} boxSize={3.5} />}
+          _hover={{ color: T.blue, bg: T.blueLight }}
+          onClick={() => router.back()}
+          mb={4}
+        >
+          Back
+        </Button>
+
+        {/* ── Two-column layout (like reference screenshot) ── */}
+        <Flex gap={4} align="flex-start" direction={{ base: 'column', md: 'row' }}>
+
+          {/* ──────── LEFT SIDEBAR ──────── */}
+          <Box
+            w={{ base: '100%', md: '240px' }}
+            flexShrink={0}
+          >
+            {/* Profile card */}
+            <Box
+              bg={T.surface}
+              border="1px solid"
+              borderColor={T.border}
+              borderRadius={T.radius}
+              boxShadow={T.shadow}
+              overflow="hidden"
+              mb={3}
+            >
+              {/* Top gradient strip */}
+              <Box
+                h="64px"
+                background="linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)"
+              />
+
+              {/* Photo + info */}
+              <Box px={4} pb={5} mt="-45px">
+                <ProfilePhoto name={me?.name || 'U'} loading={loading} />
+
+                <VStack spacing={1} mt={3} textAlign="center">
+                  <Skeleton isLoaded={!loading}>
+                    <Text fontSize="15px" fontWeight="800" color={T.text} letterSpacing="-0.2px" lineHeight="1.2">
+                      {me?.name || '—'}
+                    </Text>
+                  </Skeleton>
+                  <Skeleton isLoaded={!loading}>
+                    <Text fontSize="11px" color={T.textMuted} fontWeight="500">
+                      {me?.designation?.trim() || 'No designation set'}
+                    </Text>
+                  </Skeleton>
+                  <Skeleton isLoaded={!loading} mt={1}>
+                    {me?.role && <RolePill role={me.role} />}
+                  </Skeleton>
+                </VStack>
+
+                {/* Status indicator */}
+                <Flex justify="center" mt={2.5}>
+                  <HStack spacing={1.5}>
+                    <Box w="6px" h="6px" borderRadius="full" bg={isActive ? T.green : T.textMuted} />
+                    <Text fontSize="11px" fontWeight="600" color={isActive ? T.green : T.textMuted}>
+                      {isActive ? 'Active Account' : 'Inactive'}
+                    </Text>
+                  </HStack>
+                </Flex>
+              </Box>
+
+              {/* Divider + meta */}
+              <Box borderTop="1px solid" borderColor={T.border} px={4} py={4}>
+                <Stack spacing={3}>
+                  <MetaRow label="Email" value={me?.email || '—'} loading={loading} />
+                  <MetaRow label="Designation" value={me?.designation?.trim() || '—'} loading={loading} />
+                  {memberSince && (
+                    <MetaRow label="Member Since" value={memberSince} loading={loading} />
+                  )}
+                </Stack>
+              </Box>
+            </Box>
+
+            {/* Action buttons (like reference: Edit Profile / Change Password) */}
+            <Box
+              bg={T.surface}
+              border="1px solid"
+              borderColor={T.border}
+              borderRadius={T.radius}
+              boxShadow={T.shadow}
+              p={3}
+            >
+              <Stack spacing={2}>
+                <SidebarActionBtn
+                  icon={FiEdit3}
+                  label="Edit Profile"
+                  onClick={openEdit}
+                />
+              </Stack>
+            </Box>
+          </Box>
+
+          {/* ──────── RIGHT MAIN PANEL ──────── */}
+          <Box flex="1" minW={0}>
+
+            {/* Profile Details card */}
+            <Box
+              bg={T.surface}
+              border="1px solid"
+              borderColor={T.border}
+              borderRadius={T.radius}
+              boxShadow={T.shadow}
+              overflow="hidden"
+              mb={4}
+            >
+              <Box px={5} py={3.5} borderBottom="1px solid" borderColor={T.border} bg="#fafbff">
+                <HStack justify="space-between">
+                  <Text fontSize="11px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.7px">
+                    Profile Details
+                  </Text>
+                  <Button
+                    size="xs" h="26px" px={3}
+                    fontSize="11px" fontWeight="600"
+                    bg={T.blue} color="white"
+                    borderRadius="8px"
+                    leftIcon={<Icon as={FiEdit3} boxSize={3} />}
+                    _hover={{ bg: T.blueDark }}
+                    onClick={openEdit}
+                    isDisabled={loading || !me}
+                  >
+                    Edit
+                  </Button>
+                </HStack>
+              </Box>
+
+              <Box p={5}>
+                <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
+                  {[
+                    { label: 'Full Name', value: me?.name || '—', icon: FiUser },
+                    { label: 'Email Address', value: me?.email || '—', icon: FiMail },
+                    { label: 'Designation', value: me?.designation?.trim() || '—', icon: FiBriefcase },
+                    { label: 'User ID', value: me?._id ? `#${me._id.slice(-6).toUpperCase()}` : '—', icon: FiShield },
+                  ].map(({ label, value, icon }) => (
+                    <Box
+                      key={label}
+                      bg="#fafbff"
+                      border="1px solid"
+                      borderColor={T.border}
+                      borderRadius={T.radiusSm}
+                      px={4} py={3}
+                      _hover={{ borderColor: T.borderStrong }}
+                      transition="border-color 0.15s"
+                    >
+                      <HStack spacing={2.5}>
+                        <Box
+                          w="30px" h="30px"
+                          borderRadius="8px"
+                          bg={T.blueLight}
+                          display="flex" alignItems="center" justifyContent="center"
+                          flexShrink={0}
+                        >
+                          <Icon as={icon} color={T.blue} boxSize={3.5} />
+                        </Box>
+                        <Box flex="1" minW={0}>
+                          <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.5px">
+                            {label}
+                          </Text>
+                          <Skeleton isLoaded={!loading} mt={0.5}>
+                            <Text fontSize="13px" fontWeight="700" color={T.text} noOfLines={1}>{value}</Text>
+                          </Skeleton>
+                        </Box>
+                      </HStack>
+                    </Box>
+                  ))}
+                </SimpleGrid>
+              </Box>
+            </Box>
+
+            {/* Access & Permissions card */}
+            <Box
+              bg={T.surface}
+              border="1px solid"
+              borderColor={T.border}
+              borderRadius={T.radius}
+              boxShadow={T.shadow}
+              overflow="hidden"
+            >
+              <Box px={5} py={3.5} borderBottom="1px solid" borderColor={T.border} bg="#fafbff">
+                <Text fontSize="11px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.7px">
+                  Access & Permissions
+                </Text>
+              </Box>
+
+              <Box p={5}>
+                <SimpleGrid columns={2} spacing={3}>
+                  {/* Role */}
+                  <Box
+                    bg="#fafbff"
+                    border="1px solid"
+                    borderColor={T.border}
+                    borderRadius={T.radiusSm}
+                    px={4} py={3.5}
+                    position="relative"
+                    overflow="hidden"
+                    _before={{
+                      content: '""',
+                      position: 'absolute',
+                      top: 0, left: 0, right: 0,
+                      h: '3px',
+                      bg: me?.role ? ROLE_CONFIG[me.role].dot : T.textMuted,
+                    }}
+                  >
+                    <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.6px" mb={2}>
+                      Role
+                    </Text>
+                    <Skeleton isLoaded={!loading}>
+                      {me?.role && <RolePill role={me.role} />}
+                    </Skeleton>
+                  </Box>
+
+                  {/* Status */}
+                  <Box
+                    bg="#fafbff"
+                    border="1px solid"
+                    borderColor={T.border}
+                    borderRadius={T.radiusSm}
+                    px={4} py={3.5}
+                    position="relative"
+                    overflow="hidden"
+                    _before={{
+                      content: '""',
+                      position: 'absolute',
+                      top: 0, left: 0, right: 0,
+                      h: '3px',
+                      bg: isActive ? T.green : T.textMuted,
+                    }}
+                  >
+                    <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.6px" mb={2}>
+                      Status
+                    </Text>
+                    <Skeleton isLoaded={!loading}>
+                      <HStack spacing={1.5}>
+                        <Box w="6px" h="6px" borderRadius="full" bg={isActive ? T.green : T.textMuted} />
+                        <Text fontSize="12px" fontWeight="700" color={isActive ? T.green : T.textMuted}>
+                          {me?.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                        </Text>
+                      </HStack>
+                    </Skeleton>
+                  </Box>
+
+                  {/* Member since */}
+                  <Box
+                    bg="#fafbff"
+                    border="1px solid"
+                    borderColor={T.border}
+                    borderRadius={T.radiusSm}
+                    px={4} py={3.5}
+                    gridColumn="1 / -1"
+                  >
+                    <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.6px" mb={1}>
+                      Account Created
+                    </Text>
+                    <Skeleton isLoaded={!loading}>
+                      <Text fontSize="13px" fontWeight="600" color={T.textSub}>
+                        {memberSince || '—'}
+                      </Text>
+                    </Skeleton>
+                  </Box>
+                </SimpleGrid>
+              </Box>
+            </Box>
+          </Box>
+        </Flex>
+
+        {/* ── Edit Modal (ALL LOGIC UNCHANGED) ── */}
+        <Modal isOpen={isEditOpen} onClose={closeEdit} size="lg" isCentered>
+          <ModalOverlay bg="rgba(0,0,0,0.3)" backdropFilter="blur(4px)" />
+          <ModalContent
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={T.border}
+            boxShadow={T.shadowMd}
+            fontFamily="'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif"
+          >
+            <ModalHeader
+              fontSize="15px" fontWeight="800" color={T.text}
+              borderBottom="1px solid" borderColor={T.border} pb={4}
+            >
+              Edit Profile
+            </ModalHeader>
+            <ModalCloseButton top={3.5} right={4} isDisabled={saving} />
+
+            <ModalBody py={5} overflowY="auto">
+              <Stack spacing={4}>
+                <FormControl>
+                  <FormLabel fontSize="11px" fontWeight="700" color={T.textSub} textTransform="uppercase" letterSpacing="0.5px" mb={1}>
+                    Full Name
+                  </FormLabel>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} {...inputSx} size="sm" />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel fontSize="11px" fontWeight="700" color={T.textSub} textTransform="uppercase" letterSpacing="0.5px" mb={1}>
+                    Designation
+                  </FormLabel>
+                  <Input
+                    value={designation}
+                    onChange={(e) => setDesignation(e.target.value)}
+                    placeholder="e.g. Credit Analyst"
+                    {...inputSx}
+                    size="sm"
+                  />
+                </FormControl>
+
+                {/* Access Controls */}
+                <Box
+                  p={4}
+                  border="1px solid"
+                  borderColor={canEditRoleStatus ? T.border : '#f1f5f9'}
+                  borderRadius={T.radiusSm}
+                  bg={canEditRoleStatus ? '#fafbff' : '#f8fafc'}
+                  opacity={canEditRoleStatus ? 1 : 0.6}
+                >
+                  <HStack spacing={1.5} mb={3}>
+                    <Icon as={FiShield} boxSize={3.5} color={canEditRoleStatus ? T.blue : T.textMuted} />
+                    <Text fontSize="11px" fontWeight="700" color={canEditRoleStatus ? T.textSub : T.textMuted} textTransform="uppercase" letterSpacing="0.5px">
+                      Access Controls
+                    </Text>
+                    {!canEditRoleStatus && (
+                      <Box px={2} bg="#f1f5f9" borderRadius="full">
+                        <Text fontSize="10px" fontWeight="600" color={T.textMuted}>Read only</Text>
+                      </Box>
+                    )}
+                  </HStack>
+
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl isDisabled={!canEditRoleStatus}>
+                      <FormLabel fontSize="11px" fontWeight="700" color={T.textSub} textTransform="uppercase" letterSpacing="0.5px" mb={1}>
+                        Role
+                      </FormLabel>
+                      <Select value={role} onChange={(e) => setRole(e.target.value as AppRole)} {...inputSx} size="sm">
+                        <option value="USER">User</option>
+                        <option value="SALES">Sales</option>
+                        <option value="OPERATION">Operation</option>
+                        <option value="ADMIN">Admin</option>
+                        <option value="SUPER_ADMIN">Super Admin</option>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl isDisabled={!canEditRoleStatus}>
+                      <FormLabel fontSize="11px" fontWeight="700" color={T.textSub} textTransform="uppercase" letterSpacing="0.5px" mb={1}>
+                        Status
+                      </FormLabel>
+                      <Select value={status} onChange={(e) => setStatus(e.target.value as UserStatus)} {...inputSx} size="sm">
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                      </Select>
+                    </FormControl>
+                  </SimpleGrid>
+                </Box>
+
+                <FormControl>
+                  <FormLabel fontSize="11px" fontWeight="700" color={T.textSub} textTransform="uppercase" letterSpacing="0.5px" mb={1}>
+                    Email Address
+                  </FormLabel>
+                  <Input
+                    value={me?.email || ''}
+                    isReadOnly
+                    {...inputSx}
+                    size="sm"
+                    bg="#f8fafc"
+                    color={T.textMuted}
+                    cursor="not-allowed"
+                    _hover={{ borderColor: T.border }}
+                  />
+                </FormControl>
+              </Stack>
+            </ModalBody>
+
+            <ModalFooter borderTop="1px solid" borderColor={T.border} pt={4}>
+              <HStack w="100%" justify="space-between">
+                <Button variant="ghost" fontSize="13px" fontWeight="600" borderRadius={T.radiusSm} onClick={closeEdit} isDisabled={saving}>
+                  Cancel
+                </Button>
+                <Button
+                  fontSize="13px" fontWeight="700" h="38px" px={6}
+                  bg={T.blue} color="white" borderRadius={T.radiusSm}
+                  _hover={{ bg: T.blueDark }}
+                  onClick={save} isLoading={saving} loadingText="Saving…"
+                >
+                  Save Changes
+                </Button>
+              </HStack>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+      </Container>
     </Box>
   )
 }
