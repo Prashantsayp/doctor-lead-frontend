@@ -117,7 +117,7 @@ export default function LoginPage() {
       <Box
         display={{ base: 'none', lg: 'flex' }}
         flexDir="column"
-        justify="space-between"
+        justifyContent="space-between"
         w="46%"
         flexShrink={0}
         px={12}

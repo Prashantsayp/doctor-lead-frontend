@@ -77,16 +77,18 @@ const formatINR = (value: number) =>
 function SectionCard({ children }: { children: React.ReactNode }) {
   return (
     <Box
-      bg="white"
-      _dark={{ bg: 'gray.800' }}
-      rounded="xl"
-      shadow="sm"
-      border="1px solid"
-      borderColor="gray.100"
-      _dark_borderColor="gray.700"
-      overflow="hidden"
-      mb={6}
-    >
+  bg="white"
+  _dark={{
+    bg: 'gray.800',
+    borderColor: 'gray.700',
+  }}
+  rounded="xl"
+  shadow="sm"
+  border="1px solid"
+  borderColor="gray.100"
+  overflow="hidden"
+  mb={6}
+>
       {children}
     </Box>
   );
@@ -155,7 +157,7 @@ export default function LenderPage() {
 
   const fetchLenders = async () => {
     try {
-      const res = await axios.get<Lender[]>(API_BASE);
+      const res = await axios.get<Lender[]>(`${API_BASE}/get-all`);
       setLenders(res.data);
     } catch {
       toast({
@@ -172,8 +174,8 @@ export default function LenderPage() {
   };
 
   useEffect(() => {
-    fetchLenders();
-  }, []);
+  fetchLenders();
+}, [fetchLenders]);
 
   // ── Handlers ──
 
@@ -203,8 +205,7 @@ export default function LenderPage() {
         isActive: form.isActive,
       };
 
-      await axios.post(API_BASE, payload);
-
+await axios.post(`${API_BASE}/create`, payload);
       toast({
         title: 'Lender created successfully',
         status: 'success',
@@ -420,95 +421,135 @@ export default function LenderPage() {
 
           {/* ── Lender Table ── */}
           <SectionCard>
-            <SectionHeader
-              title="Lender List"
-              subtitle={loading ? 'Loading…' : `${lenders.length} lender${lenders.length !== 1 ? 's' : ''} registered`}
-            />
+          <SectionHeader
+            title="Lender List"
+            subtitle={
+              loading
+                ? 'Loading…'
+                : `${lenders.length} lender${lenders.length !== 1 ? 's' : ''} registered`
+            }
+          />
 
-            <Box overflowX="auto">
-              <Table variant="simple" size="md">
-                <Thead>
-                  <Tr bg="gray.50" _dark={{ bg: 'gray.750' }}>
-                    {['Lender', 'Min CIBIL', 'Max FOIR', 'Min Income', 'Status', 'Toggle'].map((col) => (
-                      <Th
-                        key={col}
-                        fontSize="xs"
-                        fontWeight="700"
-                        color="gray.500"
-                        textTransform="uppercase"
-                        letterSpacing="0.07em"
-                        py={3}
-                        whiteSpace="nowrap"
-                      >
-                        {col}
-                      </Th>
-                    ))}
+          <Box overflowX="auto" w="100%">
+            <Table variant="simple" size="md">
+              <Thead>
+                <Tr bg="gray.50" _dark={{ bg: 'gray.700' }}>
+                  {[
+                    'Lender',
+                    'Min CIBIL',
+                    'Max FOIR',
+                    'Min Income',
+                    'Status',
+                    'Toggle',
+                  ].map((col) => (
+                    <Th
+                      key={col}
+                      fontSize="xs"
+                      fontWeight="700"
+                      color="gray.500"
+                      textTransform="uppercase"
+                      letterSpacing="0.07em"
+                      py={3}
+                      whiteSpace="nowrap"
+                    >
+                      {col}
+                    </Th>
+                  ))}
+                </Tr>
+              </Thead>
+
+              <Tbody>
+                {loading ? (
+                  <TableSkeleton />
+                ) : lenders.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={6} textAlign="center" py={12}>
+                      <VStack spacing={2}>
+                        <Text fontSize="2xl">🏦</Text>
+
+                        <Text
+                          color="gray.500"
+                          _dark={{ color: 'gray.400' }}
+                          fontSize="sm"
+                        >
+                          No lenders yet. Add your first one above.
+                        </Text>
+                      </VStack>
+                    </Td>
                   </Tr>
-                </Thead>
+                ) : (
+                  lenders.map((l) => (
+                    <Tr
+                      key={l._id}
+                      _hover={{
+                        bg: 'blue.50',
+                        _dark: { bg: 'gray.700' },
+                      }}
+                      transition="background 0.15s ease"
+                      opacity={togglingId === l._id ? 0.5 : 1}
+                    >
+                      <Td>
+                        <Text
+                          fontWeight="600"
+                          fontSize="sm"
+                          color="gray.800"
+                          _dark={{ color: 'gray.100' }}
+                        >
+                          {l.name}
+                        </Text>
+                      </Td>
 
-                <Tbody>
-                  {loading ? (
-                    <TableSkeleton />
-                  ) : lenders.length === 0 ? (
-                    <Tr>
-                      <Td colSpan={6} textAlign="center" py={12}>
-                        <VStack spacing={2}>
-                          <Text fontSize="2xl">🏦</Text>
-                          <Text color="gray.500" fontSize="sm">
-                            No lenders yet. Add your first one above.
-                          </Text>
-                        </VStack>
+                      <Td>
+                        <Text
+                          fontSize="sm"
+                          color="gray.600"
+                          _dark={{ color: 'gray.400' }}
+                        >
+                          {l.minCibil}+
+                        </Text>
+                      </Td>
+
+                      <Td>
+                        <Text
+                          fontSize="sm"
+                          color="gray.600"
+                          _dark={{ color: 'gray.400' }}
+                        >
+                          {l.maxFoir}%
+                        </Text>
+                      </Td>
+
+                      <Td>
+                        <Text
+                          fontSize="sm"
+                          color="gray.600"
+                          _dark={{ color: 'gray.400' }}
+                        >
+                          {formatINR(l.minIncome)}
+                        </Text>
+                      </Td>
+
+                      <Td>
+                        <StatusBadge isActive={l.isActive} />
+                      </Td>
+
+                      <Td>
+                        <Switch
+                          isChecked={l.isActive}
+                          onChange={() => toggleStatus(l)}
+                          colorScheme="green"
+                          size="md"
+                          isDisabled={togglingId === l._id}
+                          aria-label={`Toggle ${l.name}`}
+                        />
                       </Td>
                     </Tr>
-                  ) : (
-                    lenders.map((l) => (
-                      <Tr
-                        key={l._id}
-                        _hover={{ bg: 'blue.50', _dark: { bg: 'gray.750' } }}
-                        transition="background 0.15s"
-                        opacity={togglingId === l._id ? 0.5 : 1}
-                      >
-                        <Td>
-                          <Text fontWeight="600" fontSize="sm" color="gray.800" _dark={{ color: 'gray.100' }}>
-                            {l.name}
-                          </Text>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} fontVariantNumeric="tabular-nums">
-                            {l.minCibil}+
-                          </Text>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} fontVariantNumeric="tabular-nums">
-                            {l.maxFoir}%
-                          </Text>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} fontVariantNumeric="tabular-nums">
-                            {formatINR(l.minIncome)}
-                          </Text>
-                        </Td>
-                        <Td>
-                          <StatusBadge isActive={l.isActive} />
-                        </Td>
-                        <Td>
-                          <Switch
-                            isChecked={l.isActive}
-                            onChange={() => toggleStatus(l)}
-                            colorScheme="green"
-                            size="md"
-                            isDisabled={togglingId === l._id}
-                            aria-label={`Toggle ${l.name}`}
-                          />
-                        </Td>
-                      </Tr>
-                    ))
-                  )}
-                </Tbody>
-              </Table>
-            </Box>
+                  ))
+                )}
+              </Tbody>
+            </Table>
+          </Box>
           </SectionCard>
-
         </Container>
       </Box>
     </Box>
