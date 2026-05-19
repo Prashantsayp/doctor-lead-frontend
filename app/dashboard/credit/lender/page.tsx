@@ -29,7 +29,7 @@ import {
   HStack,
   VStack,
 } from '@chakra-ui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useCallback , useState } from 'react';
 import axios from 'axios';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ export default function LenderPage() {
 
   // ── Data fetching ──
 
-  const fetchLenders = async () => {
+  const fetchLenders = useCallback(async () => {
     try {
       const res = await axios.get<Lender[]>(`${API_BASE}/get-all`);
       setLenders(res.data);
@@ -171,7 +171,7 @@ export default function LenderPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
   fetchLenders();
