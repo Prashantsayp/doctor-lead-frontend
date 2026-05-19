@@ -334,7 +334,7 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-export const Dashboard: React.FC = () => {
+  const Dashboard: React.FC = () => {
   const toast   = useToast()
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ''
 

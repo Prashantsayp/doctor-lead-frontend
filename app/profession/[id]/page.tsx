@@ -288,6 +288,7 @@ function SectionCard({ children, p = 5, ...rest }: any) {
   )
 }
 
+
 function SectionHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <Box mb={4}>
@@ -676,38 +677,260 @@ export default function DoctorProfilePage() {
     finally { setUploadingDoc(null) }
   }
 
-  const uploadBankStatement = async () => {
-    if (!bankFile || !doctor?._id) { toast({ title: 'Select file first', status: 'warning' }); return }
-    const token = localStorage.getItem('token')
-    const formData = new FormData()
-    formData.append('file', bankFile)
-    formData.append('password', bankPassword)
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/upload-financial/${doctor._id}/bankStatement`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message)
-      toast({ title: 'Bank Statement Processed', status: 'success' })
-      console.log('RESULT:', data)
-    } catch (err: any) { toast({ title: 'Upload failed', description: err.message, status: 'error' }) }
+const uploadBankStatement = async () => {
+
+  if (!bankFile || !doctor?._id) {
+    toast({
+      title: 'Select file first',
+      status: 'warning',
+    });
+    return;
   }
 
-  const uploadCibil = async () => {
-    if (!cibilFile || !doctor?._id) { toast({ title: 'Select file first', status: 'warning' }); return }
-    const token = localStorage.getItem('token')
-    const formData = new FormData()
-    formData.append('file', cibilFile)
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/doctor-lead/upload-financial/${doctor._id}/cibil`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message)
-      toast({ title: 'CIBIL Uploaded', status: 'success' })
-    } catch (err: any) { toast({ title: 'Upload failed', description: err.message, status: 'error' }) }
+  try {
+
+    const token = localStorage.getItem('token');
+
+    const formData = new FormData();
+
+    formData.append('file', bankFile);
+    formData.append(
+      'type',
+      'bankStatement',
+    );
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/ocr/bank-statement`,
+      {
+        method: 'POST',
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+
+        body: formData,
+      },
+    );
+
+    const data = await res.json();
+
+    console.log(
+      'BANK PARSED RESPONSE:',
+      data,
+    );
+
+    setFinancialData((prev: any) => ({
+      ...prev,
+      bankStatement: data,
+    }));
+
+    toast({
+      title: 'Bank Statement Parsed',
+      status: 'success',
+    });
+
+  } catch (err: any) {
+
+    console.log(err);
+
+    toast({
+      title: 'Upload failed',
+      description: err.message,
+      status: 'error',
+    });
+  }
+};
+const uploadCibil = async () => {
+
+  if (!cibilFile || !doctor?._id) {
+
+    toast({
+      title: 'Select file first',
+      status: 'warning',
+    });
+
+    return;
   }
 
+  try {
+
+    const token = localStorage.getItem('token');
+
+    const formData = new FormData();
+
+    formData.append('file', cibilFile);
+
+    formData.append(
+      'type',
+      'cibil',
+    );
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/ocr/bank-statement`,
+      {
+        method: 'POST',
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+
+        body: formData,
+      },
+    );
+
+    const data = await res.json();
+
+    console.log(
+      'CIBIL PARSED RESPONSE:',
+      data,
+    );
+
+    setFinancialData((prev: any) => ({
+      ...prev,
+      cibil: data,
+    }));
+
+    toast({
+      title: 'CIBIL Parsed',
+      status: 'success',
+    });
+
+  } catch (err: any) {
+
+    console.log(err);
+
+    toast({
+      title: 'Upload failed',
+      description: err.message,
+      status: 'error',
+    });
+  }
+};
+const checkEligibility = async () => {
+
+  try {
+
+    console.log(
+      'FULL FINANCIAL DATA:',
+      financialData,
+    );
+
+    const token =
+      localStorage.getItem('token');
+
+    const bankData =
+      financialData?.bankStatement?.data || {};
+
+    const cibilData =
+      financialData?.cibil?.data || {};
+
+    console.log(
+      'BANK DATA:',
+      bankData,
+    );
+
+    console.log(
+      'CIBIL DATA:',
+      cibilData,
+    );
+
+    const salary = Number(
+      bankData?.salary || 0,
+    );
+
+    const obligations = Number(
+      cibilData?.totalObligations || 0,
+    );
+
+    const cibilScore = Number(
+      cibilData?.cibilScore || 0,
+    );
+
+    // FOIR
+    const foir =
+      salary > 0
+        ? Number(
+            (
+              (obligations / salary) *
+              100
+            ).toFixed(2),
+          )
+        : 0;
+
+    // ELIGIBLE LOAN
+    const eligibleLoanAmount =
+      salary > 0
+        ? Math.max(
+            0,
+            (salary * 0.6 - obligations) * 36,
+          )
+        : 0;
+
+    const payload = {
+
+      salary,
+
+      cibilScore,
+
+      foir,
+
+      loanAmount:
+        eligibleLoanAmount,
+    };
+
+    console.log(
+      'ELIGIBILITY PAYLOAD:',
+      payload,
+    );
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/eligibility/check`,
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+
+          Authorization:
+            `Bearer ${token}`,
+        },
+
+        body:
+          JSON.stringify(payload),
+      },
+    );
+
+    const data = await res.json();
+
+    console.log(
+      'ELIGIBILITY RESPONSE:',
+      data,
+    );
+
+    setFinancialData((prev: any) => ({
+      ...prev,
+      eligibilityResult: data,
+    }));
+
+    toast({
+      title: 'Eligibility Checked',
+      description:
+        `${data.matchedCount} lenders matched`,
+      status: 'success',
+    });
+
+  } catch (err: any) {
+
+    console.log(err);
+
+    toast({
+      title: 'Eligibility Failed',
+      description: err.message,
+      status: 'error',
+    });
+  }
+};
   const handleViewDoc = (docKey: string) => {
     const doc = kycDocuments.find((d) => d.key === docKey)
     const url = buildFileUrl(doc?.fileUrl)
@@ -1085,60 +1308,626 @@ export default function DoctorProfilePage() {
                   </TabPanel>
 
                   {/* Financial Docs */}
-                  <TabPanel px={0} pt={0}>
-                    <Stack spacing={4}>
-                      {financialData?.data && (
-                        <Box bg={TOKEN.greenLight} border="1px solid" borderColor="#86efac" borderRadius={TOKEN.radiusSm} p={4}>
-                          <Text fontSize="13px" fontWeight="700" color={TOKEN.green} mb={3}>Bank Analysis Result</Text>
-                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                            {[
-                              { label: 'Monthly Income', value: `₹${financialData.data?.parsed?.monthly_income || 0}` },
-                              { label: 'EMI', value: `₹${financialData.data?.parsed?.emi_outflow || 0}` },
-                              { label: 'CIBIL', value: financialData.data?.eligibility?.cibil },
-                              { label: 'FOIR', value: `${financialData.data?.eligibility?.foir}%` },
-                            ].map((item) => (
-                              <Box key={item.label}>
-                                <Text fontSize="10px" fontWeight="600" color={TOKEN.textMuted} textTransform="uppercase" letterSpacing="0.5px">{item.label}</Text>
-                                <Text fontSize="16px" fontWeight="800" color={TOKEN.text}>{item.value}</Text>
-                              </Box>
-                            ))}
-                          </SimpleGrid>
-                          <Box mt={3} px={2.5} py={1} bg={financialData.data?.eligibility?.status === 'Eligible' ? TOKEN.green : TOKEN.red} borderRadius="full" display="inline-block">
-                            <Text fontSize="11px" fontWeight="700" color="white">{financialData.data?.eligibility?.status}</Text>
-                          </Box>
-                        </Box>
-                      )}
+        {/* Financial Docs */}
+<TabPanel px={0} pt={0}>
 
-                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                        {/* Bank Statement */}
-                        <Box border="1px solid" borderColor={TOKEN.border} borderRadius={TOKEN.radiusSm} p={4}>
-                          <Text fontSize="13px" fontWeight="700" color={TOKEN.text} mb={3}>Bank Statement</Text>
-                          <Stack spacing={2.5}>
-                            <Input type="file" size="sm" borderRadius={TOKEN.radiusSm} {...inputSx}
-                              onChange={(e) => setBankFile(e.target.files?.[0] || null)} />
-                            <Input size="sm" borderRadius={TOKEN.radiusSm} placeholder="PDF Password (optional)"
-                              value={bankPassword} onChange={(e) => setBankPassword(e.target.value)} {...inputSx} />
-                            <Button size="sm" h="34px" fontSize="13px" fontWeight="600" bg={TOKEN.blue} color="white"
-                              borderRadius={TOKEN.radiusSm} _hover={{ bg: '#1d4ed8' }} onClick={uploadBankStatement} isDisabled={!bankFile}>
-                              Upload & Analyze
-                            </Button>
-                          </Stack>
-                        </Box>
-                        {/* CIBIL */}
-                        <Box border="1px solid" borderColor={TOKEN.border} borderRadius={TOKEN.radiusSm} p={4}>
-                          <Text fontSize="13px" fontWeight="700" color={TOKEN.text} mb={3}>CIBIL Report</Text>
-                          <Stack spacing={2.5}>
-                            <Input type="file" size="sm" borderRadius={TOKEN.radiusSm} {...inputSx}
-                              onChange={(e) => setCibilFile(e.target.files?.[0] || null)} />
-                            <Button size="sm" h="34px" fontSize="13px" fontWeight="600" bg={TOKEN.green} color="white"
-                              borderRadius={TOKEN.radiusSm} _hover={{ bg: '#15803d' }} onClick={uploadCibil} isDisabled={!cibilFile}>
-                              Upload CIBIL
-                            </Button>
-                          </Stack>
-                        </Box>
-                      </SimpleGrid>
-                    </Stack>
-                  </TabPanel>
+  <Stack spacing={4}>
+
+    {/* Eligibility Result */}
+    {financialData?.eligibilityResult && (
+      <Box
+        border="1px solid"
+        borderColor={TOKEN.border}
+        borderRadius={TOKEN.radiusSm}
+        p={4}
+        bg={TOKEN.surface}
+      >
+        <Text
+          fontSize="14px"
+          fontWeight="700"
+          color={TOKEN.text}
+          mb={4}
+        >
+          Eligibility Result
+        </Text>
+
+        <Stack spacing={3}>
+
+          {financialData?.eligibilityResult?.matchedLenders?.length > 0 ? (
+
+            financialData?.eligibilityResult?.matchedLenders?.map(
+              (item: any, index: number) => (
+
+                <Box
+                  key={index}
+                  border="1px solid"
+                  borderColor={TOKEN.border}
+                  borderRadius={TOKEN.radiusSm}
+                  p={3}
+                  bg="#fafbff"
+                >
+                  <HStack justify="space-between">
+
+                    <Box>
+                      <Text
+                        fontSize="13px"
+                        fontWeight="700"
+                        color={TOKEN.text}
+                      >
+                        {item.lenderName}
+                      </Text>
+
+                      <Text
+                        fontSize="11px"
+                        color={TOKEN.textMuted}
+                      >
+                        {item.lenderId}
+                      </Text>
+                    </Box>
+
+                    <Box
+                      px={3}
+                      py={1}
+                      borderRadius="full"
+                      bg={
+                        item.eligible
+                          ? TOKEN.greenLight
+                          : TOKEN.redLight
+                      }
+                    >
+                      <Text
+                        fontSize="11px"
+                        fontWeight="700"
+                        color={
+                          item.eligible
+                            ? TOKEN.green
+                            : TOKEN.red
+                        }
+                      >
+                        {item.eligible
+                          ? 'Eligible'
+                          : 'Rejected'}
+                      </Text>
+                    </Box>
+
+                  </HStack>
+
+                  <Box mt={2}>
+                    {item.reasons?.map(
+                      (reason: string, idx: number) => (
+                        <Text
+                          key={idx}
+                          fontSize="11px"
+                          color={TOKEN.textSub}
+                        >
+                          • {reason}
+                        </Text>
+                      ),
+                    )}
+                  </Box>
+                </Box>
+              ),
+            )
+
+          ) : (
+
+            <Box
+              border="1px dashed"
+              borderColor={TOKEN.border}
+              borderRadius={TOKEN.radiusSm}
+              p={4}
+              textAlign="center"
+            >
+              <Text
+                fontSize="13px"
+                color={TOKEN.red}
+                fontWeight="600"
+              >
+                No Eligible Lenders Found
+              </Text>
+            </Box>
+
+          )}
+
+        </Stack>
+      </Box>
+    )}
+
+{financialData?.eligibilityResult && (() => {
+  const bankData =
+    financialData?.bankStatement?.data ?? {};
+
+  const cibilData =
+    financialData?.cibil?.data ?? {};
+
+  console.log(
+    'BANK DATA FINAL:',
+    bankData,
+  );
+
+  console.log(
+    'CIBIL DATA FINAL:',
+    cibilData,
+  );
+
+  /* =========================================
+      VALUES
+  ========================================= */
+
+  const salary =
+    bankData?.salary ?? null;
+
+  const obligations =
+    cibilData?.totalObligations ?? 0;
+
+  const cibilScore =
+    cibilData?.cibilScore ?? null;
+
+  /* =========================================
+      FOIR
+  ========================================= */
+
+  const foir =
+    salary && salary > 0
+      ? Number(
+          (
+            (obligations / salary) *
+            100
+          ).toFixed(2),
+        )
+      : 0;
+
+  /* =========================================
+      ELIGIBLE EMI
+  ========================================= */
+
+  const eligibleEmi =
+    salary
+      ? Math.max(
+          0,
+          salary * 0.6 - obligations,
+        )
+      : 0;
+
+  /* =========================================
+      LOAN CALCULATION
+  ========================================= */
+
+  const eligibleLoanAmount =
+    pvFromEmi(
+      eligibleEmi,
+      12,
+      84,
+    );
+
+  /* =========================================
+      SAFETY LIMIT
+  ========================================= */
+
+  let finalLoanAmount =
+    eligibleLoanAmount;
+
+  if (
+    finalLoanAmount > 50000000
+  ) {
+
+    finalLoanAmount = 0;
+  }
+
+  /* =========================================
+      ELIGIBILITY
+  ========================================= */
+
+  const isEligible =
+    financialData?.eligibilityResult
+      ?.matchedCount > 0 &&
+    salary &&
+    cibilScore;
+
+  console.log({
+    salary,
+    obligations,
+    cibilScore,
+    foir,
+    eligibleLoanAmount,
+    finalLoanAmount,
+  });
+
+  return (
+
+    <Box
+      border="1px solid"
+      borderColor={
+        isEligible
+          ? '#86efac'
+          : '#fecaca'
+      }
+      bg={
+        isEligible
+          ? TOKEN.greenLight
+          : TOKEN.redLight
+      }
+      borderRadius={TOKEN.radiusSm}
+      p={5}
+    >
+
+      {/* =========================================
+          HEADER
+      ========================================= */}
+
+      <HStack
+        justify="space-between"
+        align="start"
+        mb={4}
+      >
+
+        <Box>
+
+          <Text
+            fontSize="18px"
+            fontWeight="800"
+            color={
+              isEligible
+                ? TOKEN.green
+                : TOKEN.red
+            }
+          >
+            {isEligible
+              ? 'Eligible'
+              : 'Not Eligible'}
+          </Text>
+
+          <Text
+            fontSize="12px"
+            color={TOKEN.textSub}
+            mt={1}
+          >
+            Based on uploaded bank statement
+            and CIBIL report
+          </Text>
+
+        </Box>
+
+        <Box
+          px={3}
+          py={1}
+          borderRadius="full"
+          bg={
+            isEligible
+              ? TOKEN.green
+              : TOKEN.red
+          }
+        >
+          <Text
+            fontSize="11px"
+            fontWeight="700"
+            color="white"
+          >
+            {financialData?.eligibilityResult
+              ?.matchedCount || 0}{' '}
+            Lenders Matched
+          </Text>
+        </Box>
+
+      </HStack>
+
+      {/* =========================================
+          SUMMARY GRID
+      ========================================= */}
+
+      <SimpleGrid
+        columns={{
+          base: 1,
+          md: 2,
+        }}
+        spacing={4}
+      >
+
+        {/* SALARY */}
+
+        <Box>
+
+          <Text
+            fontSize="11px"
+            color={TOKEN.textMuted}
+            fontWeight="600"
+            textTransform="uppercase"
+          >
+            Salary
+          </Text>
+
+          <Text
+            fontSize="20px"
+            fontWeight="800"
+            color={TOKEN.text}
+          >
+            {
+              salary
+                ? `₹${salary.toLocaleString(
+                    'en-IN',
+                  )}`
+                : 'Not Parsed'
+            }
+          </Text>
+
+        </Box>
+
+        {/* CIBIL */}
+
+        <Box>
+
+          <Text
+            fontSize="11px"
+            color={TOKEN.textMuted}
+            fontWeight="600"
+            textTransform="uppercase"
+          >
+            CIBIL Score
+          </Text>
+
+          <Text
+            fontSize="20px"
+            fontWeight="800"
+            color={
+              cibilScore
+                ? TOKEN.text
+                : TOKEN.red
+            }
+          >
+            {
+              cibilScore ??
+              'Not Parsed'
+            }
+          </Text>
+
+        </Box>
+
+        {/* FOIR */}
+
+        <Box>
+
+          <Text
+            fontSize="11px"
+            color={TOKEN.textMuted}
+            fontWeight="600"
+            textTransform="uppercase"
+          >
+            FOIR
+          </Text>
+
+          <Text
+            fontSize="20px"
+            fontWeight="800"
+            color={TOKEN.text}
+          >
+            {
+              Number.isFinite(foir)
+                ? `${foir}%`
+                : 'N/A'
+            }
+          </Text>
+
+        </Box>
+
+        {/* LOAN AMOUNT */}
+
+        <Box>
+
+          <Text
+            fontSize="11px"
+            color={TOKEN.textMuted}
+            fontWeight="600"
+            textTransform="uppercase"
+          >
+            Eligible Loan Amount
+          </Text>
+
+          <Text
+            fontSize="20px"
+            fontWeight="800"
+            color={
+              isEligible
+                ? TOKEN.green
+                : TOKEN.red
+            }
+          >
+            {
+              finalLoanAmount > 0
+                ? `₹${Math.round(
+                    finalLoanAmount,
+                  ).toLocaleString(
+                    'en-IN',
+                  )}`
+                : 'Invalid'
+            }
+          </Text>
+
+        </Box>
+
+      </SimpleGrid>
+
+      {/* =========================================
+          WARNINGS
+      ========================================= */}
+
+      <Stack mt={4} spacing={2}>
+
+        {!salary && (
+
+          <Box
+            bg={TOKEN.amberLight}
+            borderRadius={TOKEN.radiusSm}
+            px={3}
+            py={2}
+          >
+            <Text
+              fontSize="12px"
+              fontWeight="600"
+              color={TOKEN.amber}
+            >
+              Salary not parsed from
+              bank statement
+            </Text>
+          </Box>
+        )}
+
+        {!cibilScore && (
+
+          <Box
+            bg={TOKEN.redLight}
+            borderRadius={TOKEN.radiusSm}
+            px={3}
+            py={2}
+          >
+            <Text
+              fontSize="12px"
+              fontWeight="600"
+              color={TOKEN.red}
+            >
+              CIBIL score not parsed
+              from report
+            </Text>
+          </Box>
+        )}
+
+      </Stack>
+
+    </Box>
+  );
+})()}
+    <SimpleGrid
+      columns={{ base: 1, md: 2 }}
+      spacing={4}
+    >
+
+      {/* Bank Statement */}
+      <Box
+        border="1px solid"
+        borderColor={TOKEN.border}
+        borderRadius={TOKEN.radiusSm}
+        p={4}
+      >
+
+        <Text
+          fontSize="13px"
+          fontWeight="700"
+          color={TOKEN.text}
+          mb={3}
+        >
+          Bank Statement
+        </Text>
+
+        <Stack spacing={3}>
+
+        <Input
+  type="file"
+  onChange={(e) => {
+
+    console.log(
+      'BANK FILE:',
+      e.target.files,
+    );
+
+    setBankFile(
+      e.target.files?.[0] || null,
+    );
+  }}
+/>
+
+          <Input
+            size="sm"
+            placeholder="PDF Password (optional)"
+            value={bankPassword}
+            onChange={(e) =>
+              setBankPassword(e.target.value)
+            }
+            {...inputSx}
+          />
+
+          <Button
+            size="sm"
+            h="36px"
+            bg={TOKEN.blue}
+            color="white"
+            borderRadius={TOKEN.radiusSm}
+            _hover={{ bg: '#1d4ed8' }}
+            onClick={uploadBankStatement}
+            isDisabled={!bankFile}
+          >
+            Upload & Analyze
+          </Button>
+
+        </Stack>
+      </Box>
+
+      {/* CIBIL */}
+      <Box
+        border="1px solid"
+        borderColor={TOKEN.border}
+        borderRadius={TOKEN.radiusSm}
+        p={4}
+      >
+
+        <Text
+          fontSize="13px"
+          fontWeight="700"
+          color={TOKEN.text}
+          mb={3}
+        >
+          CIBIL Report
+        </Text>
+
+        <Stack spacing={3}>
+
+         <Input
+  type="file"
+  onChange={(e) => {
+
+    console.log(
+      'CIBIL FILE:',
+      e.target.files,
+    );
+
+    setCibilFile(
+      e.target.files?.[0] || null,
+    );
+  }}
+/>
+          <Button
+            size="sm"
+            h="36px"
+            bg={TOKEN.green}
+            color="white"
+            borderRadius={TOKEN.radiusSm}
+            _hover={{ bg: '#15803d' }}
+            onClick={uploadCibil}
+            isDisabled={!cibilFile}
+          >
+            Upload CIBIL
+          </Button>
+
+        </Stack>
+      </Box>
+
+    </SimpleGrid>
+
+    <Button
+      size="md"
+      h="42px"
+      fontSize="14px"
+      fontWeight="700"
+      bg={TOKEN.purple}
+      color="white"
+      borderRadius={TOKEN.radiusSm}
+      _hover={{ bg: '#6d28d9' }}
+      onClick={checkEligibility}
+    >
+      Check Eligibility
+    </Button>
+
+  </Stack>
+
+</TabPanel>
                 </TabPanels>
               </Tabs>
             </SectionCard>

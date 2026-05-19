@@ -511,16 +511,29 @@ export default function AdminDoctorsPage() {
 
   return (
     <Box
-      minH="100vh"
-      bg="#f8fafc"
-      pt="72px"
-      px={{ base: 3, md: 6 }}
-      pb={10}
-      sx={{
-        fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      }}
-    >
-      <Container maxW="100%" px="0">
+  minH="100vh"
+  bg="#f8fafc"
+  pt="72px"
+  pb={10}
+  overflow="hidden"
+  position="relative"
+  width="100%"
+  sx={{
+    fontFamily:
+      "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  }}
+>
+      <Container
+  maxW="1700px"
+  mx="auto"
+  px={{ base: 4, md: 6 }}
+  w="100%"
+>
+  <Box
+  w="100%"
+  maxW="1450px"
+  mx="auto"
+></Box>
 
         {/* ── TOP HEADER ── */}
         <Box mb={5}>

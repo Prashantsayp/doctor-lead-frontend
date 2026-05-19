@@ -80,7 +80,7 @@ const NAV_ITEMS: NavItem[] = [
     dividerBefore: true,
   },
   {
-    label: 'Identify Doctor',
+    label: 'Identify Customer',
     href: '/identify-doctor',
     icon: FiSearch,
     section: 'Operations',
