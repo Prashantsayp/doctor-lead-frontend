@@ -28,28 +28,32 @@ export default function AppShell({
     : SIDEBAR_EXPANDED_W
 
   return (
-    <Box>
-      {!hideLayout && <Header />}
+  <Box>
+  {!hideLayout && <Header />}
 
-      <Flex minH="100vh">
-        {/* Sidebar */}
-        {!hideLayout && (
-          <Sidebar
-            collapsed={collapsed}
-            onToggle={() => setCollapsed(!collapsed)}
-          />
-        )}
+  <Flex minH="100vh">
+    {!hideLayout && (
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(!collapsed)}
+      />
+    )}
 
-        {/* Main Content */}
-        <Box
+ <Box
   pt={!hideLayout ? '60px' : '0'}
-  ml={!hideLayout ? sidebarWidth : 0}
+  ml={!hideLayout ? {
+    base: 0,
+    md: sidebarWidth
+  } : 0}
   flex="1"
+  minW="0"
+  w="full"
+  overflow="auto"
   transition="margin-left 0.22s cubic-bezier(.4,0,.2,1)"
 >
-          {children}
-        </Box>
-      </Flex>
+      {children}
     </Box>
+  </Flex>
+</Box>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import axios from 'axios'
+
 import {
   Box,
   Button,
@@ -12,6 +13,17 @@ import {
   useToast,
   HStack,
   SimpleGrid,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalBody,
+  Input,
+  FormControl,
+  FormLabel,
+  FormErrorMessage,
+  InputGroup,
+  InputLeftAddon,
+  Spinner,
 } from '@chakra-ui/react'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -21,9 +33,66 @@ interface ExtractedData {
 }
 
 interface UploadResult {
-  extracted: ExtractedData
+  extracted?: ExtractedData
   [key: string]: unknown
 }
+
+interface PolicyForm {
+  lenderName: string
+  minCibil: string
+  maxFoir: string
+  minIncome: string
+  maxLoanAmount: string
+  minLoanAmount: string
+  maxTenureMonths: string
+  minTenureMonths: string
+  maxAge: string
+  minAge: string
+  interestRateMin: string
+  interestRateMax: string
+  processingFee: string
+  [key: string]: string
+}
+
+const EMPTY_FORM: PolicyForm = {
+  lenderName: '',
+  minCibil: '',
+  maxFoir: '',
+  roi: '',
+  minIncome: '',
+  maxLoanAmount: '',
+  minLoanAmount: '',
+  maxTenureMonths: '',
+  minTenureMonths: '',
+  maxAge: '',
+  minAge: '',
+  interestRateMin: '',
+  interestRateMax: '',
+  processingFee: '',
+}
+
+const FORM_FIELDS: {
+  key: keyof PolicyForm
+  label: string
+  placeholder: string
+  prefix?: string
+  required?: boolean
+}[] = [
+  { key: 'lenderName',      label: 'Lender Name',           placeholder: 'e.g. State Bank of India', required: true },
+  { key: 'minCibil',        label: 'Min CIBIL Score',        placeholder: 'e.g. 750',    required: true },
+  { key: 'maxFoir',         label: 'Max FOIR (%)',           placeholder: 'e.g. 45',     prefix: '%', required: true },
+  { key: 'roi',             label: 'Rate of Interest (%)',   placeholder: 'e.g. 12',     prefix: '%', required: true },
+  { key: 'minIncome',       label: 'Min Income (₹ / Month)', placeholder: 'e.g. 25000',  prefix: '₹', required: true },
+  { key: 'minLoanAmount',   label: 'Min Loan Amount (₹)',    placeholder: 'e.g. 50000',  prefix: '₹' },
+  { key: 'maxLoanAmount',   label: 'Max Loan Amount (₹)',    placeholder: 'e.g. 5000000',prefix: '₹' },
+  { key: 'minTenureMonths', label: 'Min Tenure (Months)',    placeholder: 'e.g. 12' },
+  { key: 'maxTenureMonths', label: 'Max Tenure (Months)',    placeholder: 'e.g. 84' },
+  { key: 'minAge',          label: 'Min Age (Years)',        placeholder: 'e.g. 21' },
+  { key: 'maxAge',          label: 'Max Age (Years)',        placeholder: 'e.g. 60' },
+  { key: 'interestRateMin', label: 'Interest Rate Min (%)',  placeholder: 'e.g. 8.5',    prefix: '%' },
+  { key: 'interestRateMax', label: 'Interest Rate Max (%)',  placeholder: 'e.g. 18',     prefix: '%' },
+  { key: 'processingFee',   label: 'Processing Fee (%)',     placeholder: 'e.g. 1.5',    prefix: '%' },
+]
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -33,98 +102,343 @@ const formatBytes = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+/**
+ * Maps extracted keys (any casing/snake_case) → PolicyForm keys.
+ * Returns EMPTY_FORM fields if nothing matches — modal will be blank for manual entry.
+ */
+const mapExtractedToForm = (extracted: ExtractedData): Partial<PolicyForm> => {
+  const result: Partial<PolicyForm> = {}
+  const str = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+
+  const aliases: Record<string, keyof PolicyForm> = {
+    lender_name: 'lenderName',         lendername: 'lenderName',
+    bank_name: 'lenderName',           bankname: 'lenderName',
+    lenderName: 'lenderName',
+
+    minCibil: 'minCibilScore',  minCibil: 'minCibilScore',
+    cibil_score: 'minCibilScore',      cibilscore: 'minCibilScore',
+    minCibil: 'minCibilScore',
+
+    maxFOIR: 'maxFoir',               maxfoir: 'maxFoir',
+    foir: 'maxFoir',                   maxFoir: 'maxFoir',
+
+    min_income: 'minIncome',           minincome: 'minIncome',
+    minimum_income: 'minIncome',       minIncome: 'minIncome',
+
+    max_loan_amount: 'maxLoanAmount',  maxloanamount: 'maxLoanAmount',
+    maximum_loan: 'maxLoanAmount',     maxLoanAmount: 'maxLoanAmount',
+
+    min_loan_amount: 'minLoanAmount',  minloanamount: 'minLoanAmount',
+    minimum_loan: 'minLoanAmount',     minLoanAmount: 'minLoanAmount',
+
+    max_tenure: 'maxTenureMonths',     max_tenure_months: 'maxTenureMonths',
+    maxtenure: 'maxTenureMonths',      maxTenureMonths: 'maxTenureMonths',
+
+    min_tenure: 'minTenureMonths',     min_tenure_months: 'minTenureMonths',
+    mintenure: 'minTenureMonths',      minTenureMonths: 'minTenureMonths',
+
+    max_age: 'maxAge',                 maxage: 'maxAge',
+    maxAge: 'maxAge',
+
+    min_age: 'minAge',                 minage: 'minAge',
+    minAge: 'minAge',
+
+    interest_rate_min: 'interestRateMin', min_interest_rate: 'interestRateMin',
+    interestRateMin: 'interestRateMin',
+
+    interest_rate_max: 'interestRateMax', max_interest_rate: 'interestRateMax',
+    interestRateMax: 'interestRateMax',
+
+    processing_fee: 'processingFee',   processingfee: 'processingFee',
+    processingFee: 'processingFee',
+  }
+
+  for (const [rawKey, rawVal] of Object.entries(extracted)) {
+    const normalised = rawKey.toLowerCase().replace(/\s+/g, '_')
+    const formKey = aliases[rawKey] ?? aliases[normalised]
+    if (formKey) result[formKey] = str(rawVal)
+  }
+
+  return result
+}
+
 const ACCEPT_TYPES = '.pdf,.doc,.docx,.txt,.png,.jpg,.jpeg'
-const FILE_TYPES = ['PDF', 'DOC', 'DOCX', 'TXT', 'PNG', 'JPG']
+const FILE_TYPES   = ['PDF', 'DOC', 'DOCX', 'TXT', 'PNG', 'JPG']
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────
 
 const T = {
-  bg: '#f6f7fb',
-  surface: '#ffffff',
-  border: '#e8eaf0',
-  text: '#111827',
-  textSub: '#6b7280',
-  textMuted: '#9ca3af',
-  blue: '#2563eb',
-  blueLight: '#eff6ff',
-  green: '#16a34a',
-  greenLight: '#f0fdf4',
-  red: '#dc2626',
-  redLight: '#fef2f2',
-  radius: '14px',
-  radiusSm: '10px',
+  bg: '#f6f7fb',        surface: '#ffffff',
+  border: '#e8eaf0',    text: '#111827',
+  textSub: '#6b7280',   textMuted: '#9ca3af',
+  blue: '#2563eb',      blueLight: '#eff6ff',
+  green: '#16a34a',     greenLight: '#f0fdf4',
+  red: '#dc2626',       redLight: '#fef2f2',
+  amber: '#d97706',     amberLight: '#fffbeb',
+  radius: '14px',       radiusSm: '10px',
   shadow: '0 1px 3px rgba(0,0,0,0.06)',
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────
+// ─── Policy Review Modal ────────────────────────────────────────────────────
 
-function FieldRow({ label, value, isLast }: { label: string; value: unknown; isLast?: boolean }) {
-  const display =
-    value === null || value === undefined ? '—'
-    : typeof value === 'boolean' ? (value ? 'Yes' : 'No')
-    : String(value)
-  const isEmpty = display === '—'
-
-  return (
-    <Flex
-      align="center"
-      justify="space-between"
-      gap={6}
-      px={5}
-      py={3}
-      borderBottom={isLast ? 'none' : '1px solid'}
-      borderColor={T.border}
-      _hover={{ bg: '#fafbff' }}
-      transition="background 0.1s"
-    >
-      <Text
-        fontSize="12px" color={T.textSub} fontWeight="600"
-        textTransform="capitalize" minW="140px" flexShrink={0} letterSpacing="0.1px"
-      >
-        {label.replace(/_/g, ' ')}
-      </Text>
-      <Text
-        fontSize="13px"
-        color={isEmpty ? T.textMuted : T.text}
-        fontWeight={isEmpty ? '400' : '600'}
-        textAlign="right"
-        wordBreak="break-all"
-        fontStyle={isEmpty ? 'italic' : 'normal'}
-      >
-        {display}
-      </Text>
-    </Flex>
-  )
+interface PolicyModalProps {
+  isOpen: boolean
+  onClose: () => void
+  form: PolicyForm
+  onChange: (key: keyof PolicyForm, value: string) => void
+  onSave: () => void
+  onRevert: () => void
+  isSaving: boolean
+  autoFilledCount: number
+  isManualMode: boolean   // true when extraction returned nothing
 }
 
-function StatChip({ label, value, accent }: { label: string; value: string | number; accent: string }) {
+function PolicyReviewModal({
+  isOpen, onClose, form, onChange, onSave, onRevert,
+  isSaving, autoFilledCount, isManualMode,
+}: PolicyModalProps) {
+  const [touched, setTouched] = useState<Partial<Record<keyof PolicyForm, boolean>>>({})
+
+  const handleBlur = (key: keyof PolicyForm) =>
+    setTouched(prev => ({ ...prev, [key]: true }))
+
+  const isError = (key: keyof PolicyForm) => {
+    const field = FORM_FIELDS.find(f => f.key === key)
+    return !!(field?.required && touched[key] && !form[key].trim())
+  }
+
+  // Header colours driven by mode
+  const headerBg    = isManualMode ? T.amberLight : T.greenLight
+  const headerIcon  = isManualMode ? '✏️' : '✅'
+  const headerColor = isManualMode ? T.amber : T.green
+  const headerSub   = isManualMode
+    ? 'Extraction returned no data · fill in manually'
+    : `${autoFilledCount} fields auto-filled · verify & complete`
+
   return (
-    <Box
-      flex="1" bg={T.surface} border="1px solid" borderColor={T.border}
-      borderRadius={T.radiusSm} px={4} py={3} textAlign="center" boxShadow={T.shadow}
-      position="relative" overflow="hidden"
-      _before={{ content: '""', position: 'absolute', top: 0, left: 0, right: 0, h: '3px', bg: accent, borderRadius: '14px 14px 0 0' }}
-    >
-      <Text fontSize="20px" fontWeight="800" color={T.text} lineHeight="1">{value}</Text>
-      <Text fontSize="10px" fontWeight="600" color={T.textMuted} mt={1} textTransform="uppercase" letterSpacing="0.6px">{label}</Text>
-    </Box>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" scrollBehavior="inside" isCentered>
+      <ModalOverlay bg="rgba(0,0,0,0.45)" backdropFilter="blur(4px)" />
+      <ModalContent
+        borderRadius="20px"
+        overflow="hidden"
+        mx={4}
+        maxH="90vh"
+        boxShadow="0 24px 64px rgba(0,0,0,0.18)"
+        fontFamily="'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif"
+      >
+        {/* ── Header ── */}
+        <Box px={6} py={4} borderBottom="1px solid" borderColor={T.border} bg={headerBg}>
+          <Flex align="center" justify="space-between">
+            <HStack spacing={3}>
+              <Box
+                w="40px" h="40px" borderRadius="12px"
+                bg={isManualMode ? '#fef3c7' : '#dcfce7'}
+                border="1px solid"
+                borderColor={isManualMode ? '#fcd34d' : '#86efac'}
+                display="flex" alignItems="center" justifyContent="center"
+                fontSize="18px"
+              >
+                {headerIcon}
+              </Box>
+              <Box>
+                <Text fontSize="15px" fontWeight="800" color={T.text} letterSpacing="-0.3px">
+                  {isManualMode ? 'Enter Policy Details' : 'Review Eligibility Criteria'}
+                </Text>
+                <Text fontSize="12px" color={headerColor} fontWeight="500">
+                  {headerSub}
+                </Text>
+              </Box>
+            </HStack>
+            <Button
+              variant="ghost" size="sm" onClick={onClose}
+              borderRadius="8px" color={T.textMuted} fontSize="18px" px={2}
+              _hover={{ bg: T.border, color: T.text }}
+            >
+              ✕
+            </Button>
+          </Flex>
+        </Box>
+
+        {/* ── Manual mode notice banner ── */}
+        {isManualMode && (
+          <Box px={6} pt={4}>
+            <Box
+              bg={T.amberLight} border="1px solid" borderColor="#fcd34d"
+              borderRadius="10px" px={4} py={3}
+            >
+              <HStack spacing={2}>
+                <Text fontSize="14px">⚠️</Text>
+                <Text fontSize="12px" fontWeight="600" color={T.amber}>
+                  No data could be extracted from the document. Please fill in the policy fields manually.
+                </Text>
+              </HStack>
+            </Box>
+          </Box>
+        )}
+
+        <ModalBody px={6} py={5}>
+          {/* Section label */}
+          <HStack spacing={2} mb={5}>
+            <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="1px">
+              ✏️ Policy Fields
+            </Text>
+          </HStack>
+
+          <VStack spacing={5} align="stretch">
+            {FORM_FIELDS.map((field) => {
+              const val       = form[field.key]
+              const autofilled = !isManualMode && !!val
+              const error     = isError(field.key)
+
+              return (
+                <FormControl key={field.key} isRequired={field.required} isInvalid={error}>
+                  <FormLabel
+                    fontSize="11px" fontWeight="700" color={T.text}
+                    textTransform="uppercase" letterSpacing="0.6px" mb={1.5}
+                  >
+                    {field.label}
+                    {autofilled && (
+                      <Box
+                        as="span" ml={2} px={1.5} py={0.5}
+                        bg="#dcfce7" borderRadius="4px"
+                        fontSize="9px" fontWeight="700" color={T.green}
+                        letterSpacing="0.3px" verticalAlign="middle"
+                      >
+                        AUTO
+                      </Box>
+                    )}
+                  </FormLabel>
+
+                  {field.prefix ? (
+                    <InputGroup>
+                      <InputLeftAddon
+                        fontSize="13px" fontWeight="700" color={T.textSub}
+                        bg="#f8fafc" h="44px"
+                        border="1.5px solid"
+                        borderColor={error ? T.red : autofilled ? '#86efac' : T.border}
+                        borderRight="none"
+                      >
+                        {field.prefix}
+                      </InputLeftAddon>
+                      <Input
+                        value={val}
+                        onChange={e => onChange(field.key, e.target.value)}
+                        onBlur={() => handleBlur(field.key)}
+                        placeholder={field.placeholder}
+                        h="44px" fontSize="13px"
+                        fontWeight={val ? '600' : '400'}
+                        border="1.5px solid"
+                        borderColor={error ? T.red : autofilled ? '#86efac' : T.border}
+                        borderRadius="0 10px 10px 0"
+                        bg={autofilled ? '#f0fdf4' : T.surface}
+                        _focus={{
+                          borderColor: error ? T.red : T.blue,
+                          boxShadow: `0 0 0 3px ${error ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.12)'}`,
+                          outline: 'none',
+                        }}
+                        _placeholder={{ color: T.textMuted, fontWeight: '400' }}
+                      />
+                    </InputGroup>
+                  ) : (
+                    <Input
+                      value={val}
+                      onChange={e => onChange(field.key, e.target.value)}
+                      onBlur={() => handleBlur(field.key)}
+                      placeholder={field.placeholder}
+                      h="44px" fontSize="13px"
+                      fontWeight={val ? '600' : '400'}
+                      border="1.5px solid"
+                      borderColor={error ? T.red : autofilled ? '#86efac' : T.border}
+                      borderRadius="10px"
+                      bg={autofilled ? '#f0fdf4' : T.surface}
+                      _focus={{
+                        borderColor: error ? T.red : T.blue,
+                        boxShadow: `0 0 0 3px ${error ? 'rgba(220,38,38,0.1)' : 'rgba(37,99,235,0.12)'}`,
+                        outline: 'none',
+                      }}
+                      _placeholder={{ color: T.textMuted, fontWeight: '400' }}
+                    />
+                  )}
+
+                  {error && (
+                    <FormErrorMessage fontSize="11px" color={T.red} fontWeight="500" mt={1}>
+                      This field is required for eligibility checks
+                    </FormErrorMessage>
+                  )}
+                </FormControl>
+              )
+            })}
+          </VStack>
+        </ModalBody>
+
+        {/* ── Footer ── */}
+        <Box px={6} py={4} borderTop="1px solid" borderColor={T.border} bg="#fafbff">
+          <Flex justify="space-between" align="center">
+            <Button
+              variant="ghost" fontSize="13px" fontWeight="600"
+              color={T.textMuted} leftIcon={<Text>↺</Text>}
+              _hover={{ color: T.text, bg: T.border }}
+              onClick={onRevert} isDisabled={isSaving}
+            >
+              Revert
+            </Button>
+
+            <HStack spacing={3}>
+              <Button
+                variant="outline" fontSize="13px" fontWeight="600"
+                borderRadius="10px" borderColor={T.border} color={T.textSub}
+                h="42px" px={5} _hover={{ bg: T.border }}
+                onClick={onClose} isDisabled={isSaving}
+              >
+                Close
+              </Button>
+
+              <Button
+                h="42px" px={6} fontSize="13px" fontWeight="700"
+                borderRadius="10px"
+                background="linear-gradient(135deg, #2563eb, #7c3aed)"
+                color="white"
+                boxShadow="0 4px 14px rgba(37,99,235,0.3)"
+                leftIcon={isSaving ? <Spinner size="xs" color="white" /> : <Text>💾</Text>}
+                _hover={{ background: 'linear-gradient(135deg, #1d4ed8, #6d28d9)', transform: 'translateY(-1px)' }}
+                transition="all 0.15s"
+                onClick={onSave}
+                isLoading={isSaving}
+                loadingText="Saving…"
+              >
+                Save Policy
+              </Button>
+            </HStack>
+          </Flex>
+        </Box>
+      </ModalContent>
+    </Modal>
   )
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export default function UploadPolicyPage() {
-  const [file, setFile] = useState<File | null>(null)
-  const [dragging, setDragging] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [result, setResult] = useState<UploadResult | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const toast = useToast()
 
-  // ── File handlers (ALL UNCHANGED) ──
+  const [file, setFile]             = useState<File | null>(null)
+  const [dragging, setDragging]     = useState(false)
+  const [uploading, setUploading]   = useState(false)
+  const [progress, setProgress]     = useState(0)
+  const inputRef                    = useRef<HTMLInputElement>(null)
+  const toast                       = useToast()
 
-  const applyFile = (f: File) => { setFile(f); setResult(null); setProgress(0) }
+  const [modalOpen, setModalOpen]             = useState(false)
+  const [form, setForm]                       = useState<PolicyForm>({ ...EMPTY_FORM })
+  const [originalForm, setOriginalForm]       = useState<PolicyForm>({ ...EMPTY_FORM })
+  const [autoFilledCount, setAutoFilledCount] = useState(0)
+  const [isManualMode, setIsManualMode]       = useState(false)
+  const [isSaving, setIsSaving]               = useState(false)
+
+  const API_BASE = `${process.env.NEXT_PUBLIC_API_URL}/lender-policy`
+
+  // ── File handlers ──
+
+  const applyFile = (f: File) => { setFile(f); setProgress(0) }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -138,23 +452,26 @@ export default function UploadPolicyPage() {
     if (f) applyFile(f)
   }, [])
 
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true) }
+  const handleDragOver  = (e: React.DragEvent) => { e.preventDefault(); setDragging(true) }
   const handleDragLeave = () => setDragging(false)
 
-  // ── Upload (ALL UNCHANGED) ──
+  // ── Upload → extract → open modal ──
 
   const handleUpload = async () => {
     if (!file) {
       toast({ title: 'No file selected', status: 'warning', duration: 3000, isClosable: true, position: 'top-right' })
       return
     }
+
     const formData = new FormData()
     formData.append('file', file)
+
     try {
-      setLoading(true)
+      setUploading(true)
       setProgress(0)
+
       const res = await axios.post<UploadResult>(
-        'http://localhost:3001/policy-upload',
+        `${API_BASE}/lender-policy/create-policy`,
         formData,
         {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -163,19 +480,210 @@ export default function UploadPolicyPage() {
           },
         }
       )
-      setResult(res.data)
-      toast({ title: 'Policy extracted successfully', status: 'success', duration: 3000, isClosable: true, position: 'top-right' })
-    } catch (err) {
+
+      const extracted = res.data?.extracted ?? {}
+      const mapped    = mapExtractedToForm(extracted)
+      const count     = Object.values(mapped).filter(v => v !== '').length
+
+      // ── KEY LOGIC ──
+      // count === 0 → extraction failed / empty → manual mode
+      // count  > 0 → auto-fill mode
+      const manual = count === 0
+      const filled = { ...EMPTY_FORM, ...mapped }
+
+      setForm(filled)
+      setOriginalForm(filled)
+      setAutoFilledCount(count)
+      setIsManualMode(manual)
+      setModalOpen(true)
+
+      toast({
+        title: manual
+          ? 'No data extracted — please fill in manually'
+          : `Extraction complete — ${count} fields auto-filled`,
+        status: manual ? 'warning' : 'success',
+        duration: 3000,
+        isClosable: true,
+        position: 'top-right',
+      })
+
+    } catch (err: any) {
       console.error(err)
-      toast({ title: 'Upload failed', description: 'Something went wrong. Please try again.', status: 'error', duration: 4000, isClosable: true, position: 'top-right' })
+
+      // ── Even if the upload API itself errors, open blank modal for manual entry ──
+      setForm({ ...EMPTY_FORM })
+      setOriginalForm({ ...EMPTY_FORM })
+      setAutoFilledCount(0)
+      setIsManualMode(true)
+      setModalOpen(true)
+
+      toast({
+        title: 'Extraction failed — enter details manually',
+        description: err?.response?.data?.message || 'The document could not be processed.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top-right',
+      })
     } finally {
-      setLoading(false)
+      setUploading(false)
     }
   }
 
-  const extractedEntries = result?.extracted ? Object.entries(result.extracted) : []
-  const filledCount = extractedEntries.filter(([, v]) => v !== null && v !== undefined && v !== '').length
-  const emptyCount = extractedEntries.length - filledCount
+  // ── Form handlers ──
+
+  const handleFormChange = (key: keyof PolicyForm, value: string) =>
+    setForm(prev => ({ ...prev, [key]: value }))
+
+  const handleRevert = () => setForm({ ...originalForm })
+
+  // ── Save → POST /lender-policy/create-policy ──
+
+  const handleSave = async () => {
+
+  const missing = FORM_FIELDS.filter(
+    f =>
+      f.required &&
+      !String(form[f.key] || '').trim()
+  )
+
+  if (missing.length > 0) {
+
+    toast({
+      title: `${missing.length} required field(s) missing`,
+      description: missing
+        .map(f => f.label)
+        .join(', '),
+      status: 'warning',
+      duration: 4000,
+      isClosable: true,
+      position: 'top-right',
+    })
+
+    return
+  }
+
+  try {
+
+    setIsSaving(true)
+
+    const payload = {
+
+      lenderName:
+        form.lenderName,
+
+      minCibil:
+        Number(form.minCibil),
+
+      maxCibil:
+        Number(form.maxCibil),
+
+      minLoanAmount:
+        Number(form.minLoanAmount),
+
+      maxLoanAmount:
+        Number(form.maxLoanAmount),
+
+      allowedProfessions:
+        form.allowedProfessions || [],
+
+      allowedLocations:
+        form.allowedLocations || [],
+
+      blockedLocations:
+        form.blockedLocations || [],
+
+      employmentTypes:
+        form.employmentTypes || [],
+
+      maxFOIR:
+        form.maxFOIR
+          ? Number(form.maxFOIR)
+          : undefined,
+
+      roi:
+        form.roi
+          ? Number(form.roi)
+          : undefined,
+
+      minIncome:
+        form.minIncome
+          ? Number(form.minIncome)
+          : undefined,
+
+      isActive: true,
+
+      remarks:
+        form.remarks,
+
+      policyType:
+        form.policyType,
+    }
+
+    console.log(
+      'SAVE PAYLOAD',
+      payload
+    )
+
+    await axios.post(
+      `${API_BASE}/lender-policy/create-policy`,
+      payload
+    )
+
+    toast({
+      title:
+        'Policy saved successfully!',
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+      position: 'top-right',
+    })
+
+    setModalOpen(false)
+
+    setFile(null)
+
+    setForm({
+      ...EMPTY_FORM,
+    })
+
+    setOriginalForm({
+      ...EMPTY_FORM,
+    })
+
+    setAutoFilledCount(0)
+
+    setIsManualMode(false)
+
+  } catch (err: any) {
+
+    console.error(err)
+
+    toast({
+      title: 'Save failed',
+
+      description:
+        Array.isArray(
+          err?.response?.data?.message
+        )
+          ? err.response.data.message.join(', ')
+          : err?.response?.data?.message ||
+            'Something went wrong.',
+
+      status: 'error',
+
+      duration: 4000,
+
+      isClosable: true,
+
+      position: 'top-right',
+    })
+
+  } finally {
+
+    setIsSaving(false)
+  }
+}
 
   // ── Render ──
 
@@ -194,12 +702,10 @@ export default function UploadPolicyPage() {
           {/* ── Page Header ── */}
           <HStack spacing={3} mb={8} align="center">
             <Box
-              w="42px" h="42px"
-              borderRadius="12px"
+              w="42px" h="42px" borderRadius="12px"
               background="linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)"
               display="flex" alignItems="center" justifyContent="center"
-              boxShadow="0 4px 14px rgba(37,99,235,0.28)"
-              flexShrink={0}
+              boxShadow="0 4px 14px rgba(37,99,235,0.28)" flexShrink={0}
             >
               <Text fontSize="20px" lineHeight="1">📄</Text>
             </Box>
@@ -215,13 +721,9 @@ export default function UploadPolicyPage() {
 
           {/* ── Upload Card ── */}
           <Box
-            bg={T.surface}
-            borderRadius={T.radius}
-            border="1px solid"
-            borderColor={T.border}
-            boxShadow={T.shadow}
-            overflow="hidden"
-            mb={5}
+            bg={T.surface} borderRadius={T.radius}
+            border="1px solid" borderColor={T.border}
+            boxShadow={T.shadow} overflow="hidden" mb={5}
           >
             {/* Card header */}
             <Box px={5} py={3.5} borderBottom="1px solid" borderColor={T.border} bg="#fafbff">
@@ -246,8 +748,7 @@ export default function UploadPolicyPage() {
                 borderColor={dragging ? T.blue : file ? '#86efac' : T.border}
                 bg={dragging ? T.blueLight : file ? T.greenLight : '#fafbff'}
                 borderRadius={T.radius}
-                py={file ? 5 : 12}
-                px={6}
+                py={file ? 5 : 12} px={6}
                 textAlign="center"
                 cursor={file ? 'default' : 'pointer'}
                 transition="all 0.15s ease"
@@ -257,24 +758,18 @@ export default function UploadPolicyPage() {
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 role={!file ? 'button' : undefined}
-                aria-label={!file ? 'Click or drag to upload a document' : undefined}
               >
                 <input
-                  ref={inputRef}
-                  type="file"
-                  accept={ACCEPT_TYPES}
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
+                  ref={inputRef} type="file" accept={ACCEPT_TYPES}
+                  onChange={handleFileChange} style={{ display: 'none' }}
                 />
 
                 {!file ? (
                   <VStack spacing={4}>
                     <Box
-                      w="60px" h="60px"
-                      borderRadius="16px"
+                      w="60px" h="60px" borderRadius="16px"
                       bg={dragging ? T.blue : T.blueLight}
-                      display="flex" alignItems="center" justifyContent="center"
-                      mx="auto"
+                      display="flex" alignItems="center" justifyContent="center" mx="auto"
                       boxShadow={dragging ? '0 0 0 10px rgba(37,99,235,0.12)' : '0 0 0 10px #dbeafe'}
                       transition="all 0.15s"
                     >
@@ -320,8 +815,7 @@ export default function UploadPolicyPage() {
                       size="xs" variant="ghost" fontSize="11px" fontWeight="600"
                       color={T.textMuted} borderRadius="8px" flexShrink={0}
                       _hover={{ bg: T.redLight, color: T.red }}
-                      onClick={(e) => { e.stopPropagation(); setFile(null); setResult(null) }}
-                      aria-label="Remove file"
+                      onClick={(e) => { e.stopPropagation(); setFile(null) }}
                     >
                       Remove
                     </Button>
@@ -331,7 +825,7 @@ export default function UploadPolicyPage() {
             </Box>
 
             {/* Progress bar */}
-            {loading && (
+            {uploading && (
               <Box px={5} pb={4}>
                 <Flex justify="space-between" mb={1.5}>
                   <Text fontSize="11px" color={T.textMuted} fontWeight="500">Uploading &amp; extracting…</Text>
@@ -339,11 +833,9 @@ export default function UploadPolicyPage() {
                 </Flex>
                 <Box h="5px" bg={T.border} borderRadius="full" overflow="hidden">
                   <Box
-                    h="100%"
-                    w={`${progress}%`}
+                    h="100%" w={`${progress}%`}
                     background="linear-gradient(90deg, #2563eb, #7c3aed)"
-                    borderRadius="full"
-                    transition="width 0.3s ease"
+                    borderRadius="full" transition="width 0.3s ease"
                   />
                 </Box>
               </Box>
@@ -354,116 +846,43 @@ export default function UploadPolicyPage() {
               <Button
                 w="full" h="44px" fontSize="13px" fontWeight="700"
                 borderRadius={T.radiusSm}
-                background={file && !loading ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : undefined}
-                colorScheme={!(file && !loading) ? 'blue' : undefined}
+                background={file && !uploading ? 'linear-gradient(135deg, #2563eb, #7c3aed)' : undefined}
+                colorScheme={!(file && !uploading) ? 'blue' : undefined}
                 color="white"
-                boxShadow={file && !loading ? '0 4px 14px rgba(37,99,235,0.3)' : undefined}
-                _hover={file && !loading
-                  ? { background: 'linear-gradient(135deg, #1d4ed8, #6d28d9)', transform: 'translateY(-1px)', boxShadow: '0 6px 18px rgba(37,99,235,0.35)' }
+                boxShadow={file && !uploading ? '0 4px 14px rgba(37,99,235,0.3)' : undefined}
+                _hover={file && !uploading
+                  ? { background: 'linear-gradient(135deg, #1d4ed8, #6d28d9)', transform: 'translateY(-1px)' }
                   : {}}
                 transition="all 0.15s"
                 onClick={handleUpload}
-                isLoading={loading}
+                isLoading={uploading}
                 loadingText="Extracting…"
-                isDisabled={!file || loading}
+                isDisabled={!file || uploading}
               >
                 Extract Policy Data
               </Button>
             </Box>
           </Box>
 
-          {/* ── How It Works (shown before result) ── */}
-          {!result && (
-            <SimpleGrid columns={3} spacing={3} mb={5}>
-              {[
-                { icon: '📤', title: 'Upload', desc: 'Select or drag any policy document' },
-                { icon: '🤖', title: 'AI Extraction', desc: 'Key fields auto-detected instantly' },
-                { icon: '📋', title: 'Review', desc: 'Verify & use the extracted data' },
-              ].map((step) => (
-                <Box
-                  key={step.title}
-                  bg={T.surface}
-                  border="1px solid"
-                  borderColor={T.border}
-                  borderRadius={T.radiusSm}
-                  px={4} py={4}
-                  textAlign="center"
-                  boxShadow={T.shadow}
-                >
-                  <Text fontSize="22px" mb={1.5}>{step.icon}</Text>
-                  <Text fontSize="12px" fontWeight="700" color={T.text}>{step.title}</Text>
-                  <Text fontSize="11px" color={T.textMuted} mt={0.5} lineHeight="1.4">{step.desc}</Text>
-                </Box>
-              ))}
-            </SimpleGrid>
-          )}
-
-          {/* ── Results Card ── */}
-          {result && (
-            <Box
-              bg={T.surface}
-              borderRadius={T.radius}
-              border="1px solid"
-              borderColor={T.border}
-              boxShadow={T.shadow}
-              overflow="hidden"
-            >
-              {/* Header */}
-              <Box px={5} py={3.5} borderBottom="1px solid" borderColor={T.border} bg="#fafbff">
-                <Flex justify="space-between" align="center">
-                  <Text fontSize="11px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="0.7px">
-                    Extracted Data
-                  </Text>
-                  <Box px={2.5} py={0.5} bg={T.greenLight} borderRadius="full">
-                    <Text fontSize="11px" fontWeight="700" color={T.green}>
-                      {extractedEntries.length} fields found
-                    </Text>
-                  </Box>
-                </Flex>
+          {/* ── How It Works ── */}
+          <SimpleGrid columns={3} spacing={3} mb={5}>
+            {[
+              { icon: '📤', title: 'Upload',        desc: 'Select or drag any policy document' },
+              { icon: '🤖', title: 'AI Extraction',  desc: 'Key fields auto-detected instantly' },
+              { icon: '📋', title: 'Review & Save',  desc: 'Verify auto-filled or enter manually' },
+            ].map((step) => (
+              <Box
+                key={step.title}
+                bg={T.surface} border="1px solid" borderColor={T.border}
+                borderRadius={T.radiusSm} px={4} py={4}
+                textAlign="center" boxShadow={T.shadow}
+              >
+                <Text fontSize="22px" mb={1.5}>{step.icon}</Text>
+                <Text fontSize="12px" fontWeight="700" color={T.text}>{step.title}</Text>
+                <Text fontSize="11px" color={T.textMuted} mt={0.5} lineHeight="1.4">{step.desc}</Text>
               </Box>
-
-              {/* Stat chips */}
-              {extractedEntries.length > 0 && (
-                <HStack spacing={3} px={5} pt={4} pb={2}>
-                  <StatChip label="Total Fields" value={extractedEntries.length} accent="linear-gradient(90deg,#2563eb,#7c3aed)" />
-                  <StatChip label="Filled" value={filledCount} accent="linear-gradient(90deg,#16a34a,#059669)" />
-                  <StatChip label="Empty" value={emptyCount} accent="linear-gradient(90deg,#d97706,#f59e0b)" />
-                </HStack>
-              )}
-
-              {/* Field rows */}
-              <Box pt={2}>
-                {extractedEntries.length > 0 ? (
-                  extractedEntries.map(([key, value], idx) => (
-                    <FieldRow key={key} label={key} value={value} isLast={idx === extractedEntries.length - 1} />
-                  ))
-                ) : (
-                  <Box py={12} textAlign="center">
-                    <Text fontSize="30px" mb={2}>🔍</Text>
-                    <Text fontSize="13px" color={T.textMuted} fontWeight="500">
-                      No fields could be extracted from this document.
-                    </Text>
-                  </Box>
-                )}
-              </Box>
-
-              {/* Raw JSON */}
-              {extractedEntries.length > 0 && (
-                <Box borderTop="1px solid" borderColor={T.border} px={5} py={4}>
-                  <details>
-                    <summary style={{ cursor: 'pointer', fontSize: '12px', color: T.textMuted, fontWeight: 600, userSelect: 'none', listStyle: 'none', letterSpacing: '0.1px' }}>
-                      {'{ } '} View raw JSON
-                    </summary>
-                    <Box mt={3} bg="#f8fafc" border="1px solid" borderColor={T.border} borderRadius={T.radiusSm} p={4} overflow="auto" maxH="260px">
-                      <pre style={{ fontSize: '12px', color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, lineHeight: 1.7, fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
-                        {JSON.stringify(result.extracted, null, 2)}
-                      </pre>
-                    </Box>
-                  </details>
-                </Box>
-              )}
-            </Box>
-          )}
+            ))}
+          </SimpleGrid>
 
         </Container>
       </Box>
@@ -489,6 +908,19 @@ export default function UploadPolicyPage() {
           </Flex>
         </Container>
       </Box>
+
+      {/* ── Review / Manual Entry Modal ── */}
+      <PolicyReviewModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        form={form}
+        onChange={handleFormChange}
+        onSave={handleSave}
+        onRevert={handleRevert}
+        isSaving={isSaving}
+        autoFilledCount={autoFilledCount}
+        isManualMode={isManualMode}
+      />
     </Box>
   )
 }

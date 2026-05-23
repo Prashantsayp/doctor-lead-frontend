@@ -59,6 +59,9 @@ type ProfessionFilter =
 
 type LoanStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISBURSED'
 
+// Date filter mode: exact day vs whole month
+type DateMode = 'day' | 'month'
+
 type DoctorLeadRow = {
   _id: string
   profession?:
@@ -212,6 +215,36 @@ const loanStatusConfig = (status?: string) => {
   return { color: 'gray', bg: '#f1f5f9', text: '#64748b', dot: '#94a3b8', label: 'Pending' }
 }
 
+/* ── Date filter helpers ── */
+// Returns a Date object from a lead's createdAt value, or null if invalid
+const parseLeadDate = (v: any): Date | null => {
+  if (!v) return null
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+// Checks whether a lead's createdAt matches the selected date.
+// mode 'day'   → must match the exact day  (YYYY-MM-DD)
+// mode 'month' → must match the month only (YYYY-MM), any day
+const matchDateFilter = (createdAt: any, dateValue: string, mode: DateMode) => {
+  // No date selected → pass everything
+  if (!dateValue) return true
+
+  const d = parseLeadDate(createdAt)
+  if (!d) return false
+
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+
+  if (mode === 'month') {
+    // Compare only year + month
+    return `${y}-${m}` === dateValue.slice(0, 7)
+  }
+  // Exact day comparison
+  return `${y}-${m}-${day}` === dateValue
+}
+
 /* ================= Stat Card ================= */
 const StatCard = ({ label, value, color }: { label: string; value: number; color: string }) => (
   <Box
@@ -268,11 +301,16 @@ export default function AdminDoctorsPage() {
   const [profession, setProfession] = React.useState<ProfessionFilter>('all')
   const [loanStatus, setLoanStatus] = React.useState<'all' | 'APPROVED' | 'REJECTED' | 'DISBURSED'>('all')
 
+  // ── Date filter: single date input (YYYY-MM-DD) + mode toggle (day | month) ──
+  const [dateFilter, setDateFilter] = React.useState('')
+  const isFirstRender = React.useRef(true)
+  const [dateMode, setDateMode] = React.useState<DateMode>('day')
+
   const [exporting, setExporting] = React.useState(false)
   const [actionLoadingId, setActionLoadingId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 350)
+    const t = setTimeout(() => setDebouncedQ(q), 400)
     return () => clearTimeout(t)
   }, [q])
 
@@ -288,6 +326,11 @@ export default function AdminDoctorsPage() {
 
   React.useEffect(() => { setPage(1) }, [debouncedQ, limit])
   React.useEffect(() => { setPage(1) }, [city, risk, profession])
+  React.useEffect(() => {
+  if (page !== 1) {
+    setPage(1)
+  }
+}, [dateFilter, dateMode])
 
   const API = process.env.NEXT_PUBLIC_API_URL
 
@@ -356,10 +399,12 @@ export default function AdminDoctorsPage() {
         const riskOk = risk === 'all' || (risk === 'low' && bucket === 'Low') || (risk === 'medium' && bucket === 'Medium') || (risk === 'high' && bucket === 'High')
         const professionOk = profession === 'all' || String(d.profession || '').toUpperCase() === profession
         const statusOk = loanStatus === 'all' || String(d.loanStatus || 'PENDING') === loanStatus
-        return cityOk && riskOk && professionOk && statusOk
+        // Date filter (day or month based on mode)
+        const dateOk = matchDateFilter(d.createdAt, dateFilter, dateMode)
+        return cityOk && riskOk && professionOk && statusOk && dateOk
       })
     },
-    [city, risk, profession, loanStatus, calcProfileCompletion, getRiskBucket]
+    [city, risk, profession, loanStatus, dateFilter, dateMode, calcProfileCompletion, getRiskBucket]
   )
 
   const filtered = React.useMemo(() => applyClientFilters(rows), [rows, applyClientFilters])
@@ -373,6 +418,7 @@ export default function AdminDoctorsPage() {
   }), [filtered])
 
   const fetchAll = React.useCallback(async () => {
+    const controller = new AbortController()
     const token = getToken()
     if (!token) { setLoading(false); setErr('Please login first'); router.push('/login'); return }
     setLoading(true); setErr(null)
@@ -387,7 +433,15 @@ export default function AdminDoctorsPage() {
       else url.searchParams.delete('search')
       if (profession !== 'all') url.searchParams.set('profession', profession)
       else url.searchParams.delete('profession')
-      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      // Pass date filter to backend (backend can use it; client-side filter also applies as fallback)
+      if (dateFilter) {
+        if (dateMode === 'month') url.searchParams.set('month', dateFilter.slice(0, 7))
+        else url.searchParams.set('date', dateFilter)
+      } else {
+        url.searchParams.delete('date')
+        url.searchParams.delete('month')
+      }
+      const res = await fetch(url.toString(), {headers: {Authorization: `Bearer ${token}`,}, cache: 'no-store',signal: controller.signal,})
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed to fetch'); setRows([]); setTotalPages(1); setTotalDoctors(0); return }
       const items = normalizeItems(data).map((d: any) => ({ ...d, loanStatus: d.status, source: d.isFromOms ? 'OMS' : 'DB' }))
@@ -397,9 +451,23 @@ export default function AdminDoctorsPage() {
       setTotalPages(tp && tp > 0 ? tp : 1)
     } catch { setErr('Server error'); setRows([]); setTotalPages(1); setTotalDoctors(0) }
     finally { setLoading(false) }
-  }, [router, page, limit, debouncedQ, profession])
+    return () => controller.abort()
+  }, [page, limit, debouncedQ, profession, dateFilter, dateMode])
 
-  React.useEffect(() => { if (!isAdmin) return; fetchAll() }, [isAdmin, fetchAll])
+  const initialLoadRef = React.useRef(false)
+
+React.useEffect(() => {
+
+  if (!isAdmin) return
+  if (isFirstRender.current) {
+    isFirstRender.current = false
+    fetchAll()
+    return
+  }
+
+  fetchAll()
+
+}, [page, limit, debouncedQ, profession, dateFilter, dateMode, isAdmin])
 
   const fetchAllDoctorsForExport = React.useCallback(async () => {
     const token = getToken()
@@ -408,7 +476,7 @@ export default function AdminDoctorsPage() {
     if (!base) throw new Error('NEXT_PUBLIC_API_URL is missing')
     const allItems: DoctorLeadRow[] = []
     let currentPage = 1
-    const exportLimit = 1000
+    const exportLimit = 300
     let pages = 1
     do {
       const url = new URL(`${base}/doctor-lead/get-lead`)
@@ -417,6 +485,10 @@ export default function AdminDoctorsPage() {
       const s = debouncedQ?.trim()
       if (s) url.searchParams.set('search', s)
       if (profession !== 'all') url.searchParams.set('profession', profession)
+      if (dateFilter) {
+        if (dateMode === 'month') url.searchParams.set('month', dateFilter.slice(0, 7))
+        else url.searchParams.set('date', dateFilter)
+      }
       const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(Array.isArray(data?.message) ? data.message.join(', ') : data?.message || 'Failed')
@@ -432,7 +504,7 @@ export default function AdminDoctorsPage() {
       return []
     }
     return applyClientFilters(allItems)
-  }, [debouncedQ, profession, applyClientFilters])
+  }, [debouncedQ, profession, dateFilter, dateMode, applyClientFilters])
 
   const canPrev = page > 1
   const canNext = page < totalPages
@@ -443,11 +515,11 @@ export default function AdminDoctorsPage() {
       setExporting(true)
       const data = await fetchAllDoctorsForExport()
       if (!data.length) { toast({ title: 'No data found', status: 'info' }); return }
-      const header = ['Profession', 'Source', 'Name', 'Mobile', 'City/Pin', 'CIBIL', 'Completion%', 'Risk', 'LoanStatus', 'DoctorId']
+      const header = ['Profession', 'Source', 'Name', 'Mobile', 'City/Pin', 'CIBIL', 'Completion%', 'Risk', 'LoanStatus', 'CreatedAt', 'DoctorId']
       const lines = [header.join(','), ...data.map((d) => {
         const completion = calcProfileCompletion(d)
         const bucket = getRiskBucket(completion)
-        return [csvEscape(d.profession ?? ''), csvEscape(d.source || 'DB'), csvEscape(d.fullName), csvEscape(d.mobileNumber), csvEscape(d.cityOrPinCode ?? ''), csvEscape(d.cibilScore ?? ''), csvEscape(completion), csvEscape(bucket), csvEscape(d.loanStatus ?? 'PENDING'), csvEscape(d._id)].join(',')
+        return [csvEscape(d.profession ?? ''), csvEscape(d.source || 'DB'), csvEscape(d.fullName), csvEscape(d.mobileNumber), csvEscape(d.cityOrPinCode ?? ''), csvEscape(d.cibilScore ?? ''), csvEscape(completion), csvEscape(bucket), csvEscape(d.loanStatus ?? 'PENDING'), csvEscape(d.createdAt ?? ''), csvEscape(d._id)].join(',')
       })].join('\n')
       downloadTextFile('doctors_full_export.csv', lines, 'text/csv')
       toast({ title: 'CSV exported', description: `${data.length} records downloaded.`, status: 'success' })
@@ -460,7 +532,7 @@ export default function AdminDoctorsPage() {
       setExporting(true)
       const data = await fetchAllDoctorsForExport()
       if (!data.length) { toast({ title: 'No data found', status: 'info' }); return }
-      const payload = { search: debouncedQ, filters: { city, risk, profession }, total: data.length, items: data }
+      const payload = { search: debouncedQ, filters: { city, risk, profession, date: dateFilter, dateMode }, total: data.length, items: data }
       downloadTextFile('doctors_full_export.json', JSON.stringify(payload, null, 2), 'application/json')
       toast({ title: 'JSON exported', description: `${data.length} records downloaded.`, status: 'success' })
     } catch (e: any) { toast({ title: 'Export failed', description: e?.message, status: 'error' }) }
@@ -476,6 +548,10 @@ export default function AdminDoctorsPage() {
       if (city.trim()) url.searchParams.set('city', city.trim())
       if (risk !== 'all') url.searchParams.set('risk', risk)
       if (profession !== 'all') url.searchParams.set('profession', profession)
+      if (dateFilter) {
+        if (dateMode === 'month') url.searchParams.set('month', dateFilter.slice(0, 7))
+        else url.searchParams.set('date', dateFilter)
+      }
       await navigator.clipboard.writeText(url.toString())
       toast({ title: 'Link copied', status: 'success' })
     } catch { toast({ title: 'Copy failed', status: 'error' }) }
@@ -511,29 +587,19 @@ export default function AdminDoctorsPage() {
 
   return (
     <Box
-  minH="100vh"
-  bg="#f8fafc"
-  pt="72px"
-  pb={10}
-  overflow="hidden"
-  position="relative"
-  width="100%"
-  sx={{
-    fontFamily:
-      "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  }}
->
-      <Container
-  maxW="1700px"
-  mx="auto"
+      minH="100vh"
+      bg="#f8fafc"
+      pt="72px"
+      pb={10}
+      sx={{
+        fontFamily:
+          "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      }}
+    >
+      <Box
+  w="full"
   px={{ base: 4, md: 6 }}
-  w="100%"
 >
-  <Box
-  w="100%"
-  maxW="1450px"
-  mx="auto"
-></Box>
 
         {/* ── TOP HEADER ── */}
         <Box mb={5}>
@@ -650,6 +716,72 @@ export default function AdminDoctorsPage() {
                 w="160px"
                 {...inputStyles}
               />
+
+              {/* ── Date filter: mode toggle (Day / Month) ── */}
+              <Tooltip
+                label={
+                  dateMode === 'day'
+                    ? 'Exact Day mode: picks leads of the selected date only'
+                    : 'Month mode: picks leads of the whole selected month'
+                }
+                hasArrow
+              >
+                <Select
+                  value={dateMode}
+                  onChange={(e) => setDateMode(e.target.value as DateMode)}
+                  w="130px"
+                  {...selectStyles}
+                >
+                  <option value="day">📅 Exact Day</option>
+                  <option value="month">🗓️ Whole Month</option>
+                </Select>
+              </Tooltip>
+
+              {/* ── Date filter: single date input (native calendar modal) ── */}
+              <Tooltip
+                label={
+                  dateMode === 'month'
+                    ? 'Pick any date — its full month will be filtered'
+                    : 'Pick a date to filter leads of that day'
+                }
+                hasArrow
+              >
+                <input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => {
+
+                    const value = e.target.value
+
+                    if (!value) {
+                      setDateFilter('')
+                      return
+                    }
+
+                    setPage(1)
+                    setDateFilter(value)
+                  }}
+                />
+              </Tooltip>
+
+              {/* ── Clear date filter ── */}
+              {dateFilter && (
+                <Button
+                  size="sm"
+                  h="38px"
+                  px={3}
+                  fontSize="12px"
+                  fontWeight="600"
+                  variant="outline"
+                  borderRadius="10px"
+                  borderColor="gray.200"
+                  color="gray.600"
+                  _hover={{ bg: 'gray.50' }}
+                  onClick={() => setDateFilter('')}
+                >
+                  ✕ Clear Date
+                </Button>
+              )}
 
               {/* Spacer + Export + Records */}
               <Box flex="1" />
@@ -1017,28 +1149,42 @@ export default function AdminDoctorsPage() {
                   </Button>
 
                   {/* Page number pills */}
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const p = Math.max(1, Math.min(page - 2 + i, totalPages - 4 + i))
-                    return (
-                      <Button
-                        key={p}
-                        size="xs"
-                        h="30px"
-                        w="30px"
-                        px={0}
-                        fontSize="12px"
-                        fontWeight="600"
-                        borderRadius="8px"
-                        variant={p === page ? 'solid' : 'ghost'}
-                        bg={p === page ? 'gray.900' : 'transparent'}
-                        color={p === page ? 'white' : 'gray.500'}
-                        _hover={{ bg: p === page ? 'gray.800' : 'gray.100' }}
-                        onClick={() => setPage(p)}
-                      >
-                        {p}
-                      </Button>
-                    )
-                  })}
+                  {Array.from(
+  { length: Math.min(5, totalPages) },
+  (_, i) => {
+
+    let startPage = Math.max(1, page - 2)
+
+    // Prevent overflow
+    if (startPage + 4 > totalPages) {
+      startPage = Math.max(1, totalPages - 4)
+    }
+
+    const p = startPage + i
+
+    return (
+      <Button
+        key={p}
+        size="xs"
+        h="30px"
+        w="30px"
+        px={0}
+        fontSize="12px"
+        fontWeight="600"
+        borderRadius="8px"
+        variant={p === page ? 'solid' : 'ghost'}
+        bg={p === page ? 'gray.900' : 'transparent'}
+        color={p === page ? 'white' : 'gray.500'}
+        _hover={{
+          bg: p === page ? 'gray.800' : 'gray.100'
+        }}
+        onClick={() => setPage(p)}
+      >
+        {p}
+      </Button>
+    )
+  }
+)}
 
                   <Button
                     size="xs"
@@ -1061,7 +1207,7 @@ export default function AdminDoctorsPage() {
             </Box>
           )}
         </Box>
-      </Container>
+      </Box>
     </Box>
   )
 }

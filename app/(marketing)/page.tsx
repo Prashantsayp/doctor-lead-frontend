@@ -1,5 +1,6 @@
 'use client'
 
+import debounce from 'lodash/debounce'
 import * as React from 'react'
 import {
   Box, Container, Flex, Grid, Heading, Text, VStack, HStack,
@@ -15,6 +16,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ interface RecentLead {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PIE_COLORS  = ['#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6']
-const PAGE_SIZE   = 200
+const PAGE_SIZE   = 5000
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const PERIOD_MONTHS: Record<string, number> = { '1month': 1, '3months': 3, '6months': 6, '1year': 12 }
 const TAT_STAGES = [
@@ -77,13 +79,22 @@ const fetchAllLeads = async (token: string, months: number, base: string): Promi
   let all: LeadItem[] = d1.items
   const totalPages = Math.min(d1.totalPages, Math.ceil(d1.total / PAGE_SIZE))
   if (totalPages > 1) {
-    const settled = await Promise.allSettled(
-      Array.from({ length: totalPages - 1 }, (_, i) =>
-        fetch(`${base}/doctor-lead/get-lead?page=${i + 2}&limit=${PAGE_SIZE}&sort=createdAt:desc`, { headers: authHdr(token) })
-          .then((r) => r.json() as Promise<LeadResponse>),
-      ),
-    )
-    settled.forEach((res) => { if (res.status === 'fulfilled') all = all.concat(res.value.items) })
+    for (let page = 2; page <= totalPages; page++) {
+      const response = await fetch(
+        `${base}/doctor-lead/get-lead?page=${page}&limit=${PAGE_SIZE}&sort=createdAt:desc`,
+        {
+          headers: authHdr(token),
+        }
+      )
+
+      if (!response.ok) continue
+
+      const data: LeadResponse = await response.json()
+
+      all = all.concat(data.items)
+
+      if (all.length >= 50000) break
+    }
   }
   return all.filter((l) => new Date(l.createdAt) >= cutoff)
 }
@@ -94,17 +105,27 @@ const fetchLeadsByDateRange = async (token: string, from: Date, to: Date, base: 
   let all: LeadItem[] = d1.items
   const totalPages = Math.min(d1.totalPages, Math.ceil(d1.total / PAGE_SIZE))
   if (totalPages > 1) {
-    const settled = await Promise.allSettled(
-      Array.from({ length: totalPages - 1 }, (_, i) =>
-        fetch(`${base}/doctor-lead/get-lead?page=${i + 2}&limit=${PAGE_SIZE}&sort=createdAt:desc`, { headers: authHdr(token) })
-          .then((r) => r.json() as Promise<LeadResponse>),
-      ),
-    )
-    settled.forEach((res) => { if (res.status === 'fulfilled') all = all.concat(res.value.items) })
+    for (let page = 2; page <= totalPages; page++) {
+      const response = await fetch(
+        `${base}/doctor-lead/get-lead?page=${page}&limit=${PAGE_SIZE}&sort=createdAt:desc`,
+        {
+          headers: authHdr(token),
+        }
+      )
+
+      if (!response.ok) continue
+
+      const data: LeadResponse = await response.json()
+
+      all = all.concat(data.items)
+
+      if (all.length >= 50000) break
+    }
   }
   const toEnd = new Date(to); toEnd.setHours(23, 59, 59, 999)
   return all.filter((l) => { const d = new Date(l.createdAt); return d >= from && d <= toEnd })
 }
+
 const tat = (l: LeadItem) =>
   Math.max(0, Math.round((new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / 86_400_000))
 const computeStats = (leads: LeadItem[]): DashboardStats => {
@@ -334,7 +355,7 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-  const Dashboard: React.FC = () => {
+const Dashboard: React.FC = () => {
   const toast   = useToast()
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -350,6 +371,7 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   const [filterMode,    setFilterMode]    = React.useState<'period' | 'custom'>('period')
 
   const processLeads = (leads: LeadItem[]) => {
+    leads = leads.slice(0, 50000)
     setStats(computeStats(leads))
     setMonthly(computeMonthly(leads))
     setRecent(computeRecent(leads))
@@ -362,20 +384,67 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
   const load = React.useCallback(async () => {
     const token = getToken()
-    setLoading(true); setError(null)
+
+    setLoading(true)
+    setError(null)
+
     try {
-      if (!token) { setError('Not authenticated — please log in.'); return }
-      if (filterMode === 'custom' && dateFrom && dateTo)
-        processLeads(await fetchLeadsByDateRange(token, dateFrom, dateTo, apiBase))
-      else
-        processLeads(await fetchAllLeads(token, PERIOD_MONTHS[period] ?? 6, apiBase))
+      if (!token) {
+        setError('Not authenticated — please log in.')
+        return
+      }
+
+      let leads: LeadItem[] = []
+
+      if (filterMode === 'custom' && dateFrom && dateTo) {
+        leads = await fetchLeadsByDateRange(
+          token,
+          dateFrom,
+          dateTo,
+          apiBase
+        )
+      } else {
+        leads = await fetchAllLeads(
+          token,
+          PERIOD_MONTHS[period] ?? 6,
+          apiBase
+        )
+      }
+
+      processLeads(leads)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load dashboard'
-      setError(msg); toast({ title: msg, status: 'error', duration: 4000 })
-    } finally { setLoading(false) }
+      const msg =
+        e instanceof Error
+          ? e.message
+          : 'Failed to load dashboard'
+
+      setError(msg)
+
+      toast({
+        title: msg,
+        status: 'error',
+        duration: 4000,
+      })
+    } finally {
+      setLoading(false)
+    }
   }, [period, apiBase, toast, filterMode, dateFrom, dateTo])
 
-  React.useEffect(() => { load() }, [load])
+  const debouncedLoad = React.useMemo(
+    () =>
+      debounce(() => {
+        load()
+      }, 500),
+    [load]
+  )
+
+  React.useEffect(() => {
+    debouncedLoad()
+
+    return () => {
+      debouncedLoad.cancel()
+    }
+  }, [debouncedLoad])
 
   const handleDateRangeChange = (from: Date | null, to: Date | null) => {
     setDateFrom(from); setDateTo(to)
@@ -386,20 +455,30 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     setPeriod(val); setFilterMode('period'); setDateFrom(null); setDateTo(null)
   }
 
-  const statusPie = stats ? [
-    { name: 'Approved',  value: stats.approved  },
-    { name: 'Pending',   value: stats.pending   },
-    { name: 'Rejected',  value: stats.rejected  },
-    { name: 'Submitted', value: stats.submitted },
-    { name: 'Disbursed', value: stats.disbursed },
-  ].filter((d) => d.value > 0) : []
+  const statusPie = React.useMemo(() => {
+    if (!stats) return []
 
-  const periodLabel = filterMode === 'custom' && dateFrom && dateTo
-    ? `${fmtDate(dateFrom.toISOString())} – ${fmtDate(dateTo.toISOString())}`
-    : ({ '1month': 'Last 1 Month', '3months': 'Last 3 Months', '6months': 'Last 6 Months', '1year': 'Last 1 Year' })[period] ?? ''
+    return [
+      { name: 'Approved', value: stats.approved },
+      { name: 'Pending', value: stats.pending },
+      { name: 'Rejected', value: stats.rejected },
+      { name: 'Submitted', value: stats.submitted },
+      { name: 'Disbursed', value: stats.disbursed },
+    ].filter((d) => d.value > 0)
+  }, [stats])
+
+  const periodLabel = React.useMemo(() => {
+    return filterMode === 'custom' && dateFrom && dateTo
+      ? `${fmtDate(dateFrom.toISOString())} – ${fmtDate(dateTo.toISOString())}`
+      : ({
+          '1month': 'Last 1 Month',
+          '3months': 'Last 3 Months',
+          '6months': 'Last 6 Months',
+          '1year': 'Last 1 Year',
+        } as Record<string, string>)[period] ?? ''
+  }, [filterMode, dateFrom, dateTo, period])
 
   const profColors = ['#3b82f6','#22c55e','#8b5cf6','#f59e0b','#14b8a6']
-
   return (
     <Box minH="100vh" bg="#f8fafc">
       <Container maxW="1400px" py={6} px={6}>
@@ -434,7 +513,7 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
               <option value="6months">Last 6 Months</option>
               <option value="1year">Last 1 Year</option>
             </Box>
-            <Box as="button" onClick={load}
+            <Box as="button" onClick={() => load()}
               style={{
                 background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8,
                 padding: '7px 10px', cursor: 'pointer', color: '#64748b',
@@ -479,7 +558,7 @@ const Panel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
                 <Text fontSize="11px" color="#94a3b8">Submitted → Approved → Rejected by month</Text>
               </Box>
               <HStack spacing={4}>
-                {[['#3b82f6','Submitted'],['#22c55e','Approved'],['#ef4444','Rejected']].map(([c,l]) => (
+                {([['#3b82f6','Submitted'],['#22c55e','Approved'],['#ef4444','Rejected']] as [string, string][]).map(([c,l]) => (
                   <HStack key={l} spacing={1.5}>
                     <Box w="8px" h="8px" borderRadius="2px" bg={c} />
                     <Text fontSize="10px" color="#94a3b8" fontWeight="500">{l}</Text>
