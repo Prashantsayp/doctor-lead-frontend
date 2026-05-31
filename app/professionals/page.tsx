@@ -586,20 +586,20 @@ React.useEffect(() => {
   }
 
   return (
-    <Box
-      minH="100vh"
-      bg="#f8fafc"
-      pt="72px"
-      pb={10}
-      sx={{
-        fontFamily:
-          "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      }}
-    >
-      <Box
-  w="full"
-  px={{ base: 4, md: 6 }}
+  <Box
+  minH="100vh"
+  bg="#f8fafc"
+  pt={9}
+  pb={10}
+  overflowX="hidden"
+  width="100%"
 >
+  <Box
+    width="100%"
+    maxW="100%"
+    px={4}
+    ml={0}
+  >
 
         {/* ── TOP HEADER ── */}
         <Box mb={5}>
@@ -861,7 +861,7 @@ React.useEffect(() => {
               <Table size="sm" variant="unstyled">
                 <Thead>
                   <Tr bg="#f8fafc" borderBottom="1px solid" borderColor="gray.100">
-                    {['Profession', 'Lead', 'Contact', 'Location', 'CIBIL', 'Profile', 'Risk', 'Status', '', ''].map((h, i) => (
+                    {['Profession', 'Lead', 'Contact', 'Location', 'CIBIL', 'Profile', 'Risk', 'Status', 'View', 'Action'].map((h, i) => (
                       <Th
                         key={i}
                         fontSize="10px"

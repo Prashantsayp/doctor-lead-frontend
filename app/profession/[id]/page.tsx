@@ -629,7 +629,7 @@ export default function DoctorProfilePage() {
   const onShareProfile = async () => {
     if (typeof window === 'undefined') return
     const doctorId = doctor?._id || id
-    const url = `${window.location.origin}/profession-lead/${doctorId}`
+    const url = `${window.location.origin}/profession/${doctorId}`
     const shareText = `Doctor Profile: ${doctor?.fullName || 'N/A'}\nMobile: ${doctor?.mobileNumber || 'N/A'}\nLink: ${url}`
     try {
       if ((navigator as any).share) { await (navigator as any).share({ title: 'Doctor Profile', text: shareText, url }); toast({ title: 'Shared successfully', status: 'success' }); return }
@@ -641,7 +641,7 @@ export default function DoctorProfilePage() {
   const copyProfileLink = async () => {
     if (typeof window === 'undefined') return
     const doctorId = doctor?._id || id
-    const url = `${window.location.origin}/doctor-lead/${doctorId}`
+    const url = `${window.location.origin}/profession/${doctorId}`
     try { await navigator.clipboard.writeText(url); toast({ title: 'Link copied', status: 'success' }) }
     catch { toast({ title: 'Copy failed', description: url, status: 'info' }) }
   }
