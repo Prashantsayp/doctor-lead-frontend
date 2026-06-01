@@ -40,18 +40,81 @@ interface RecentLead {
   status: string; city: string; tatDays: number; createdAt: string
 }
 
+// ─── TAT Breakdown (real computed, not hardcoded) ─────────────────────────────
+
+interface TATStage {
+  stage: string
+  days: number
+  color: string
+}
+
+/**
+ * Computes real average TAT per pipeline stage from actual lead data.
+ *
+ * Stage logic (based on status):
+ *   PENDING    → Document Collection  (lead created, waiting for docs)
+ *   SUBMITTED  → Credit Assessment    (docs collected, under review)
+ *   APPROVED   → Lender Review        (credit ok, sent to lender)
+ *   DISBURSED  → Final / Disbursed    (fully complete)
+ *
+ * Days for each stage = avg (updatedAt - createdAt) for leads IN that status.
+ * If a stage has 0 leads → days = 0.
+ */
+const computeTATStages = (leads: LeadItem[]): TATStage[] => {
+  const stageMap: Record<string, { color: string; statuses: string[]; label: string }> = {
+    docCollection: {
+      label: 'Document Collection',
+      color: '#3b82f6',
+      statuses: ['PENDING'],
+    },
+    creditAssessment: {
+      label: 'Credit Assessment',
+      color: '#8b5cf6',
+      statuses: ['SUBMITTED'],
+    },
+    lenderReview: {
+      label: 'Lender Review',
+      color: '#22c55e',
+      statuses: ['APPROVED'],
+    },
+    disbursed: {
+      label: 'Final Approval / Disbursal',
+      color: '#f59e0b',
+      statuses: ['DISBURSED'],
+    },
+  }
+
+  return Object.values(stageMap).map(({ label, color, statuses }) => {
+    const stageLeads = leads.filter((l) => statuses.includes(l.status))
+    const avgDays =
+      stageLeads.length > 0
+        ? parseFloat(
+            (
+              stageLeads.reduce(
+                (sum, l) =>
+                  sum +
+                  Math.max(
+                    0,
+                    (new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) /
+                      86_400_000,
+                  ),
+                0,
+              ) / stageLeads.length
+            ).toFixed(1),
+          )
+        : 0
+
+    return { stage: label, days: avgDays, color }
+  })
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PIE_COLORS  = ['#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6']
 const PAGE_SIZE   = 5000
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const PERIOD_MONTHS: Record<string, number> = { '1month': 1, '3months': 3, '6months': 6, '1year': 12 }
-const TAT_STAGES = [
-  { stage: 'Document Collection', pct: 33, color: '#3b82f6' },
-  { stage: 'Credit Assessment',   pct: 28, color: '#8b5cf6' },
-  { stage: 'Lender Review',       pct: 22, color: '#22c55e' },
-  { stage: 'Final Approval',      pct: 17, color: '#f59e0b' },
-]
+
 const STATUS_CFG: Record<string, { bg: string; color: string; border: string }> = {
   APPROVED:  { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
   REJECTED:  { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
@@ -68,112 +131,177 @@ const getToken = (): string | null => {
   if (!t || t === 'null' || t === 'undefined' || !t.trim()) return null
   return t
 }
+
 const authHdr = (token: string) => ({
-  'Content-Type': 'application/json', Authorization: `Bearer ${token}`,
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${token}`,
 })
-const fetchAllLeads = async (token: string, months: number, base: string): Promise<LeadItem[]> => {
-  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months)
-  const r1 = await fetch(`${base}/doctor-lead/get-lead?page=1&limit=${PAGE_SIZE}&sort=createdAt:desc`, { headers: authHdr(token) })
+
+/**
+ * Fetches all leads for a given month-based period.
+ * Hard-caps at 50 000 items to avoid memory issues.
+ */
+const fetchAllLeads = async (
+  token: string,
+  months: number,
+  base: string,
+  signal?: AbortSignal,
+): Promise<LeadItem[]> => {
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - months)
+
+  const r1 = await fetch(
+    `${base}/doctor-lead/get-lead?page=1&limit=${PAGE_SIZE}&sort=createdAt:desc`,
+    { headers: authHdr(token), signal },
+  )
   if (!r1.ok) throw new Error(`API error ${r1.status}`)
+
   const d1: LeadResponse = await r1.json()
   let all: LeadItem[] = d1.items
+
   const totalPages = Math.min(d1.totalPages, Math.ceil(d1.total / PAGE_SIZE))
+
   if (totalPages > 1) {
     for (let page = 2; page <= totalPages; page++) {
-      const response = await fetch(
+      if (signal?.aborted) break
+      const res = await fetch(
         `${base}/doctor-lead/get-lead?page=${page}&limit=${PAGE_SIZE}&sort=createdAt:desc`,
-        {
-          headers: authHdr(token),
-        }
+        { headers: authHdr(token), signal },
       )
-
-      if (!response.ok) continue
-
-      const data: LeadResponse = await response.json()
-
+      if (!res.ok) continue
+      const data: LeadResponse = await res.json()
       all = all.concat(data.items)
-
-      if (all.length >= 50000) break
+      if (all.length >= 50_000) break
     }
   }
+
   return all.filter((l) => new Date(l.createdAt) >= cutoff)
 }
-const fetchLeadsByDateRange = async (token: string, from: Date, to: Date, base: string): Promise<LeadItem[]> => {
-  const r1 = await fetch(`${base}/doctor-lead/get-lead?page=1&limit=${PAGE_SIZE}&sort=createdAt:desc`, { headers: authHdr(token) })
+
+/**
+ * Fetches all leads for a custom date range.
+ * Hard-caps at 50 000 items to avoid memory issues.
+ */
+const fetchLeadsByDateRange = async (
+  token: string,
+  from: Date,
+  to: Date,
+  base: string,
+  signal?: AbortSignal,
+): Promise<LeadItem[]> => {
+  const r1 = await fetch(
+    `${base}/doctor-lead/get-lead?page=1&limit=${PAGE_SIZE}&sort=createdAt:desc`,
+    { headers: authHdr(token), signal },
+  )
   if (!r1.ok) throw new Error(`API error ${r1.status}`)
+
   const d1: LeadResponse = await r1.json()
   let all: LeadItem[] = d1.items
+
   const totalPages = Math.min(d1.totalPages, Math.ceil(d1.total / PAGE_SIZE))
+
   if (totalPages > 1) {
     for (let page = 2; page <= totalPages; page++) {
-      const response = await fetch(
+      if (signal?.aborted) break
+      const res = await fetch(
         `${base}/doctor-lead/get-lead?page=${page}&limit=${PAGE_SIZE}&sort=createdAt:desc`,
-        {
-          headers: authHdr(token),
-        }
+        { headers: authHdr(token), signal },
       )
-
-      if (!response.ok) continue
-
-      const data: LeadResponse = await response.json()
-
+      if (!res.ok) continue
+      const data: LeadResponse = await res.json()
       all = all.concat(data.items)
-
-      if (all.length >= 50000) break
+      if (all.length >= 50_000) break
     }
   }
-  const toEnd = new Date(to); toEnd.setHours(23, 59, 59, 999)
-  return all.filter((l) => { const d = new Date(l.createdAt); return d >= from && d <= toEnd })
+
+  const toEnd = new Date(to)
+  toEnd.setHours(23, 59, 59, 999)
+  return all.filter((l) => {
+    const d = new Date(l.createdAt)
+    return d >= from && d <= toEnd
+  })
 }
 
 const tat = (l: LeadItem) =>
-  Math.max(0, Math.round((new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / 86_400_000))
+  Math.max(
+    0,
+    Math.round(
+      (new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / 86_400_000,
+    ),
+  )
+
 const computeStats = (leads: LeadItem[]): DashboardStats => {
   const count = (s: string) => leads.filter((l) => l.status === s).length
-  const total = leads.length
-  const pending = count('PENDING'); const submitted = count('SUBMITTED')
-  const approved = count('APPROVED'); const rejected = count('REJECTED'); const disbursed = count('DISBURSED')
-  const approvalRatio = submitted > 0 ? parseFloat(((approved / submitted) * 100).toFixed(1)) : 0
+  const total     = leads.length
+  const pending   = count('PENDING')
+  const submitted = count('SUBMITTED')
+  const approved  = count('APPROVED')
+  const rejected  = count('REJECTED')
+  const disbursed = count('DISBURSED')
+  const approvalRatio =
+    submitted > 0 ? parseFloat(((approved / submitted) * 100).toFixed(1)) : 0
   const approvedLeads = leads.filter((l) => l.status === 'APPROVED')
-  const avgTAT = approvedLeads.length > 0
-    ? parseFloat((approvedLeads.reduce((s, l) => s + tat(l), 0) / approvedLeads.length).toFixed(1)) : 0
+  const avgTAT =
+    approvedLeads.length > 0
+      ? parseFloat(
+          (approvedLeads.reduce((s, l) => s + tat(l), 0) / approvedLeads.length).toFixed(1),
+        )
+      : 0
   return { total, pending, submitted, approved, rejected, disbursed, approvalRatio, avgTAT }
 }
+
 const computeMonthly = (leads: LeadItem[]): MonthlyBucket[] => {
   const map: Record<string, MonthlyBucket> = {}
   leads.forEach((l) => {
-    const d = new Date(l.createdAt)
+    const d   = new Date(l.createdAt)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     const lbl = `${MONTH_NAMES[d.getMonth()]} '${String(d.getFullYear()).slice(2)}`
     if (!map[key]) map[key] = { month: lbl, submitted: 0, approved: 0, rejected: 0 }
-    if (['SUBMITTED','APPROVED','REJECTED','DISBURSED'].includes(l.status)) map[key].submitted++
-    if (['APPROVED','DISBURSED'].includes(l.status)) map[key].approved++
+    if (['SUBMITTED', 'APPROVED', 'REJECTED', 'DISBURSED'].includes(l.status)) map[key].submitted++
+    if (['APPROVED', 'DISBURSED'].includes(l.status)) map[key].approved++
     if (l.status === 'REJECTED') map[key].rejected++
   })
-  return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v)
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => v)
 }
+
 const computeRecent = (leads: LeadItem[]): RecentLead[] =>
-  [...leads].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 8).map((l) => ({
-      id: l._id, name: l.fullName,
+  [...leads]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 8)
+    .map((l) => ({
+      id: l._id,
+      name: l.fullName,
       mobile: l.mobileNumber.replace(/^(\d{5})(\d+)$/, '$1xxxxx'),
-      profession: l.profession, status: l.status,
-      city: l.cityOrPinCode || '—', tatDays: tat(l), createdAt: l.createdAt,
+      profession: l.profession,
+      status: l.status,
+      city: l.cityOrPinCode || '—',
+      tatDays: tat(l),
+      createdAt: l.createdAt,
     }))
+
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+
 const cap = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 
 // ─── Mini Calendar ────────────────────────────────────────────────────────────
 
 interface MiniCalProps {
-  selected: Date | null; onSelect: (d: Date) => void
+  selected: Date | null
+  onSelect: (d: Date) => void
   highlightRange?: { from: Date | null; to: Date | null }
-  minDate?: Date; maxDate?: Date
+  minDate?: Date
+  maxDate?: Date
 }
-const MiniCal: React.FC<MiniCalProps> = ({ selected, onSelect, highlightRange, minDate, maxDate }) => {
+
+const MiniCal: React.FC<MiniCalProps> = ({
+  selected, onSelect, highlightRange, minDate, maxDate,
+}) => {
   const [view, setView] = React.useState(() => {
-    const b = selected || new Date(); return new Date(b.getFullYear(), b.getMonth(), 1)
+    const b = selected || new Date()
+    return new Date(b.getFullYear(), b.getMonth(), 1)
   })
   const y = view.getFullYear(), m = view.getMonth()
   const firstDay = new Date(y, m, 1).getDay()
@@ -181,25 +309,39 @@ const MiniCal: React.FC<MiniCalProps> = ({ selected, onSelect, highlightRange, m
   const cells: (Date | null)[] = []
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let d = 1; d <= dim; d++) cells.push(new Date(y, m, d))
+
   const inRange = (d: Date) =>
     !!(highlightRange?.from && highlightRange?.to && d >= highlightRange.from && d <= highlightRange.to)
   const isDisabled = (d: Date) => !!(minDate && d < minDate) || !!(maxDate && d > maxDate)
   const isSel = (d: Date) => !!(selected && d.toDateString() === selected.toDateString())
+
   return (
     <Box userSelect="none" minW="220px">
       <Flex align="center" justify="space-between" mb={3}>
-        <Box as="button" onClick={() => setView(new Date(y, m - 1, 1))}
-          style={{ background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: '#64748b' }}>
+        <Box
+          as="button"
+          onClick={() => setView(new Date(y, m - 1, 1))}
+          style={{
+            background: '#f1f5f9', border: 'none', borderRadius: 6,
+            padding: '4px 8px', cursor: 'pointer', color: '#64748b',
+          }}
+        >
           <FiChevronLeft size={13} />
         </Box>
         <Text fontSize="12px" fontWeight="700" color="#0f172a">{MONTH_NAMES[m]} {y}</Text>
-        <Box as="button" onClick={() => setView(new Date(y, m + 1, 1))}
-          style={{ background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: '#64748b' }}>
+        <Box
+          as="button"
+          onClick={() => setView(new Date(y, m + 1, 1))}
+          style={{
+            background: '#f1f5f9', border: 'none', borderRadius: 6,
+            padding: '4px 8px', cursor: 'pointer', color: '#64748b',
+          }}
+        >
           <FiChevronRight size={13} />
         </Box>
       </Flex>
       <Grid templateColumns="repeat(7,1fr)" gap="1px" mb={1}>
-        {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d) => (
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
           <Text key={d} fontSize="9px" textAlign="center" color="#94a3b8" fontWeight="700" pb={1}>{d}</Text>
         ))}
       </Grid>
@@ -208,14 +350,18 @@ const MiniCal: React.FC<MiniCalProps> = ({ selected, onSelect, highlightRange, m
           if (!d) return <Box key={i} />
           const sel = isSel(d); const rng = inRange(d); const dis = isDisabled(d)
           return (
-            <Box key={i} as="button" onClick={() => !dis && onSelect(d)}
+            <Box
+              key={i}
+              as="button"
+              onClick={() => !dis && onSelect(d)}
               style={{
                 background: sel ? '#3b82f6' : rng ? '#dbeafe' : 'transparent',
                 border: 'none', borderRadius: 6, padding: '5px 2px',
                 cursor: dis ? 'not-allowed' : 'pointer',
                 color: dis ? '#cbd5e1' : sel ? '#fff' : rng ? '#1d4ed8' : '#374151',
                 fontSize: 11, fontWeight: sel ? 700 : 400,
-              }}>
+              }}
+            >
               {d.getDate()}
             </Box>
           )
@@ -228,27 +374,42 @@ const MiniCal: React.FC<MiniCalProps> = ({ selected, onSelect, highlightRange, m
 // ─── Date Range Picker ────────────────────────────────────────────────────────
 
 interface DateRangePickerProps {
-  from: Date | null; to: Date | null
+  from: Date | null
+  to: Date | null
   onChange: (from: Date | null, to: Date | null) => void
 }
+
 const DateRangePicker: React.FC<DateRangePickerProps> = ({ from, to, onChange }) => {
   const [step, setStep] = React.useState<'from' | 'to'>('from')
   const [open, setOpen] = React.useState(false)
+
   const handleSelect = (d: Date) => {
-    if (step === 'from') { onChange(d, null); setStep('to') }
-    else {
-      if (from && d < from) onChange(d, from); else onChange(from, d)
-      setStep('from'); setOpen(false)
+    if (step === 'from') {
+      onChange(d, null)
+      setStep('to')
+    } else {
+      if (from && d < from) onChange(d, from)
+      else onChange(from, d)
+      setStep('from')
+      setOpen(false)
     }
   }
-  const label = from && to
-    ? `${fmtDate(from.toISOString())} – ${fmtDate(to.toISOString())}`
-    : from ? `From ${fmtDate(from.toISOString())}…` : 'Custom Range'
+
+  const label =
+    from && to
+      ? `${fmtDate(from.toISOString())} – ${fmtDate(to.toISOString())}`
+      : from
+        ? `From ${fmtDate(from.toISOString())}…`
+        : 'Custom Range'
+
   const active = !!(from || to)
+
   return (
     <Popover isOpen={open} onClose={() => { setOpen(false); setStep('from') }} placement="bottom-end">
       <PopoverTrigger>
-        <Box as="button" onClick={() => setOpen(!open)}
+        <Box
+          as="button"
+          onClick={() => setOpen(!open)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: active ? '#eff6ff' : '#ffffff',
@@ -256,16 +417,21 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ from, to, onChange })
             borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
             color: active ? '#2563eb' : '#64748b', fontSize: 12, fontWeight: 500,
             boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-          }}>
+          }}
+        >
           <FiCalendar size={12} />
           <span>{label}</span>
         </Box>
       </PopoverTrigger>
-      <PopoverContent w="auto" bg="white" border="1px solid #e2e8f0"
-        borderRadius="12px" boxShadow="0 10px 40px rgba(0,0,0,0.1)" p={4}>
+      <PopoverContent
+        w="auto" bg="white" border="1px solid #e2e8f0"
+        borderRadius="12px" boxShadow="0 10px 40px rgba(0,0,0,0.1)" p={4}
+      >
         <PopoverBody p={0}>
-          <Text fontSize="10px" color="#3b82f6" fontWeight="700" letterSpacing="0.08em"
-            textTransform="uppercase" mb={3}>
+          <Text
+            fontSize="10px" color="#3b82f6" fontWeight="700"
+            letterSpacing="0.08em" textTransform="uppercase" mb={3}
+          >
             {step === 'from' ? '① Select Start Date' : '② Select End Date'}
           </Text>
           <MiniCal
@@ -280,9 +446,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ from, to, onChange })
               <Text fontSize="10px" color="#94a3b8">
                 {from ? fmtDate(from.toISOString()) : '—'} → {to ? fmtDate(to.toISOString()) : '—'}
               </Text>
-              <Box as="button"
+              <Box
+                as="button"
                 onClick={() => { onChange(null, null); setStep('from'); setOpen(false) }}
-                style={{ fontSize: 10, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                style={{ fontSize: 10, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
                 Clear
               </Box>
             </Flex>
@@ -299,12 +467,16 @@ interface MetricCardProps {
   label: string; value: string | number; icon: React.ElementType
   accentColor: string; lightBg: string; helpText?: string; isLoading?: boolean
 }
-const MetricCard: React.FC<MetricCardProps> = ({ label, value, icon, accentColor, lightBg, helpText, isLoading }) => (
-  <Box bg="white" borderRadius="12px" border="1px solid #f1f5f9" p={5}
+
+const MetricCard: React.FC<MetricCardProps> = ({
+  label, value, icon, accentColor, lightBg, helpText, isLoading,
+}) => (
+  <Box
+    bg="white" borderRadius="12px" border="1px solid #f1f5f9" p={5}
     boxShadow="0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)"
     transition="all 0.2s" position="relative" overflow="hidden"
-    _hover={{ boxShadow: '0 4px 16px rgba(0,0,0,0.08)', transform: 'translateY(-1px)' }}>
-    {/* top accent bar */}
+    _hover={{ boxShadow: '0 4px 16px rgba(0,0,0,0.08)', transform: 'translateY(-1px)' }}
+  >
     <Box position="absolute" top={0} left={0} right={0} h="3px"
       bg={accentColor} borderRadius="12px 12px 0 0" />
     <Flex justify="space-between" align="flex-start">
@@ -327,7 +499,7 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, icon, accentColor
   </Box>
 )
 
-// ─── Tooltip ─────────────────────────────────────────────────────────────────
+// ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
@@ -363,6 +535,7 @@ const Dashboard: React.FC = () => {
   const [monthly,       setMonthly]       = React.useState<MonthlyBucket[]>([])
   const [recent,        setRecent]        = React.useState<RecentLead[]>([])
   const [profBreakdown, setProfBreakdown] = React.useState<{ name: string; value: number }[]>([])
+  const [tatStages,     setTatStages]     = React.useState<TATStage[]>([])
   const [loading,       setLoading]       = React.useState(true)
   const [error,         setError]         = React.useState<string | null>(null)
   const [period,        setPeriod]        = React.useState('6months')
@@ -370,21 +543,48 @@ const Dashboard: React.FC = () => {
   const [dateTo,        setDateTo]        = React.useState<Date | null>(null)
   const [filterMode,    setFilterMode]    = React.useState<'period' | 'custom'>('period')
 
-  const processLeads = (leads: LeadItem[]) => {
-    leads = leads.slice(0, 50000)
-    setStats(computeStats(leads))
-    setMonthly(computeMonthly(leads))
-    setRecent(computeRecent(leads))
+  // Stable ref to avoid stale-closure issues with debounce
+  const abortRef = React.useRef<AbortController | null>(null)
+
+  const processLeads = React.useCallback((leads: LeadItem[]) => {
+    const capped = leads.slice(0, 50_000)
+    setStats(computeStats(capped))
+    setMonthly(computeMonthly(capped))
+    setRecent(computeRecent(capped))
+    setTatStages(computeTATStages(capped))
+
     const profMap: Record<string, number> = {}
-    leads.forEach((l) => { const p = l.profession || 'UNKNOWN'; profMap[p] = (profMap[p] ?? 0) + 1 })
+    capped.forEach((l) => {
+      const p = l.profession || 'UNKNOWN'
+      profMap[p] = (profMap[p] ?? 0) + 1
+    })
     setProfBreakdown(
-      Object.entries(profMap).sort(([, a], [, b]) => b - a).slice(0, 5).map(([name, value]) => ({ name, value }))
+      Object.entries(profMap)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .map(([name, value]) => ({ name, value })),
     )
-  }
+  }, [])
+
+  /**
+   * FIX: `load` no longer depends on `period`, `filterMode`, etc. directly.
+   * Instead it reads the latest values via a ref so that the debounced
+   * function is never recreated, eliminating the stale-debounce problem.
+   */
+  const stateRef = React.useRef({ period, filterMode, dateFrom, dateTo, apiBase })
+  React.useEffect(() => {
+    stateRef.current = { period, filterMode, dateFrom, dateTo, apiBase }
+  }, [period, filterMode, dateFrom, dateTo, apiBase])
 
   const load = React.useCallback(async () => {
-    const token = getToken()
+    // Cancel any in-flight request
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
+    const { period, filterMode, dateFrom, dateTo, apiBase } = stateRef.current
+
+    const token = getToken()
     setLoading(true)
     setError(null)
 
@@ -393,75 +593,78 @@ const Dashboard: React.FC = () => {
         setError('Not authenticated — please log in.')
         return
       }
-
-      let leads: LeadItem[] = []
-
-      if (filterMode === 'custom' && dateFrom && dateTo) {
-        leads = await fetchLeadsByDateRange(
-          token,
-          dateFrom,
-          dateTo,
-          apiBase
-        )
-      } else {
-        leads = await fetchAllLeads(
-          token,
-          PERIOD_MONTHS[period] ?? 6,
-          apiBase
-        )
+      if (!apiBase) {
+        setError('NEXT_PUBLIC_API_URL is not configured.')
+        return
       }
 
+      let leads: LeadItem[]
+
+      if (filterMode === 'custom' && dateFrom && dateTo) {
+        leads = await fetchLeadsByDateRange(token, dateFrom, dateTo, apiBase, controller.signal)
+      } else {
+        leads = await fetchAllLeads(token, PERIOD_MONTHS[period] ?? 6, apiBase, controller.signal)
+      }
+
+      if (controller.signal.aborted) return
       processLeads(leads)
     } catch (e: unknown) {
-      const msg =
-        e instanceof Error
-          ? e.message
-          : 'Failed to load dashboard'
-
+      if ((e as any)?.name === 'AbortError') return
+      const msg = e instanceof Error ? e.message : 'Failed to load dashboard'
       setError(msg)
-
-      toast({
-        title: msg,
-        status: 'error',
-        duration: 4000,
-      })
+      toast({ title: msg, status: 'error', duration: 4000 })
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
     }
-  }, [period, apiBase, toast, filterMode, dateFrom, dateTo])
+  }, [processLeads, toast])
 
+  /**
+   * FIX: debouncedLoad is created ONCE (stable reference).
+   * It captures `load` which itself is stable.
+   * State changes trigger `triggerLoad`, which calls the stable debounced fn.
+   */
   const debouncedLoad = React.useMemo(
-    () =>
-      debounce(() => {
-        load()
-      }, 500),
-    [load]
+    () => debounce(() => load(), 500),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // intentionally empty — load is stable, debounce must not be recreated
   )
 
+  // Keep load reference fresh inside debounced fn via ref
+  const loadRef = React.useRef(load)
+  React.useEffect(() => { loadRef.current = load }, [load])
+
+  // Trigger debounced load whenever filter state changes
   React.useEffect(() => {
     debouncedLoad()
+    return () => { debouncedLoad.cancel() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, filterMode, dateFrom, dateTo])
 
-    return () => {
-      debouncedLoad.cancel()
-    }
+  // Cleanup abort on unmount
+  React.useEffect(() => {
+    return () => { abortRef.current?.abort(); debouncedLoad.cancel() }
   }, [debouncedLoad])
 
   const handleDateRangeChange = (from: Date | null, to: Date | null) => {
-    setDateFrom(from); setDateTo(to)
+    setDateFrom(from)
+    setDateTo(to)
     if (from && to) setFilterMode('custom')
     else if (!from && !to) setFilterMode('period')
   }
+
   const handlePeriodChange = (val: string) => {
-    setPeriod(val); setFilterMode('period'); setDateFrom(null); setDateTo(null)
+    setPeriod(val)
+    setFilterMode('period')
+    setDateFrom(null)
+    setDateTo(null)
   }
 
   const statusPie = React.useMemo(() => {
     if (!stats) return []
-
     return [
-      { name: 'Approved', value: stats.approved },
-      { name: 'Pending', value: stats.pending },
-      { name: 'Rejected', value: stats.rejected },
+      { name: 'Approved',  value: stats.approved  },
+      { name: 'Pending',   value: stats.pending   },
+      { name: 'Rejected',  value: stats.rejected  },
       { name: 'Submitted', value: stats.submitted },
       { name: 'Disbursed', value: stats.disbursed },
     ].filter((d) => d.value > 0)
@@ -471,14 +674,21 @@ const Dashboard: React.FC = () => {
     return filterMode === 'custom' && dateFrom && dateTo
       ? `${fmtDate(dateFrom.toISOString())} – ${fmtDate(dateTo.toISOString())}`
       : ({
-          '1month': 'Last 1 Month',
+          '1month':  'Last 1 Month',
           '3months': 'Last 3 Months',
           '6months': 'Last 6 Months',
-          '1year': 'Last 1 Year',
+          '1year':   'Last 1 Year',
         } as Record<string, string>)[period] ?? ''
   }, [filterMode, dateFrom, dateTo, period])
 
-  const profColors = ['#3b82f6','#22c55e','#8b5cf6','#f59e0b','#14b8a6']
+  // Total real TAT (sum of all stages)
+  const totalRealTAT = React.useMemo(
+    () => tatStages.reduce((s, t) => s + t.days, 0),
+    [tatStages],
+  )
+
+  const profColors = ['#3b82f6', '#22c55e', '#8b5cf6', '#f59e0b', '#14b8a6']
+
   return (
     <Box minH="100vh" bg="#f8fafc">
       <Container maxW="1400px" py={6} px={6}>
@@ -499,7 +709,8 @@ const Dashboard: React.FC = () => {
           </Box>
           <HStack spacing={2} flexWrap="wrap">
             <DateRangePicker from={dateFrom} to={dateTo} onChange={handleDateRangeChange} />
-            <Box as="select"
+            <Box
+              as="select"
               value={filterMode === 'custom' ? '' : period}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handlePeriodChange(e.target.value)}
               style={{
@@ -507,19 +718,23 @@ const Dashboard: React.FC = () => {
                 padding: '7px 12px', cursor: 'pointer', color: '#374151',
                 fontSize: 12, fontWeight: 500, outline: 'none', appearance: 'none',
                 paddingRight: 28, boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              }}>
+              }}
+            >
               <option value="1month">Last 1 Month</option>
               <option value="3months">Last 3 Months</option>
               <option value="6months">Last 6 Months</option>
               <option value="1year">Last 1 Year</option>
             </Box>
-            <Box as="button" onClick={() => load()}
+            <Box
+              as="button"
+              onClick={() => load()}
               style={{
                 background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8,
                 padding: '7px 10px', cursor: 'pointer', color: '#64748b',
                 display: 'flex', alignItems: 'center',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              }}>
+              }}
+            >
               <FiRefreshCw size={13} />
             </Box>
           </HStack>
@@ -537,13 +752,13 @@ const Dashboard: React.FC = () => {
 
         {/* ── Metric Cards ── */}
         <Grid templateColumns={{ base: 'repeat(2,1fr)', md: 'repeat(4,1fr)' }} gap={3} mb={5}>
-          <MetricCard label="Total Leads"      value={stats?.total.toLocaleString('en-IN') ?? '—'}     icon={FiUsers}       accentColor="#3b82f6" lightBg="#eff6ff" helpText="In selected period"    isLoading={loading} />
-          <MetricCard label="Submitted"        value={stats?.submitted.toLocaleString('en-IN') ?? '—'} icon={FiFileText}    accentColor="#8b5cf6" lightBg="#f5f3ff" helpText="Sent to lenders"       isLoading={loading} />
-          <MetricCard label="Approved"         value={stats?.approved.toLocaleString('en-IN') ?? '—'}  icon={FiCheckCircle} accentColor="#22c55e" lightBg="#f0fdf4" helpText="Sanction issued"       isLoading={loading} />
-          <MetricCard label="Rejected"         value={stats?.rejected.toLocaleString('en-IN') ?? '—'}  icon={FiXCircle}     accentColor="#ef4444" lightBg="#fef2f2" helpText="Declined by lender"    isLoading={loading} />
-          <MetricCard label="Pending"          value={stats?.pending.toLocaleString('en-IN') ?? '—'}   icon={FiClock}       accentColor="#f59e0b" lightBg="#fffbeb" helpText="Awaiting action"        isLoading={loading} />
-          <MetricCard label="Disbursed"        value={stats?.disbursed.toLocaleString('en-IN') ?? '—'} icon={FiTrendingUp}  accentColor="#14b8a6" lightBg="#f0fdfa" helpText="Loan released"         isLoading={loading} />
-          <MetricCard label="Approval Ratio"   value={stats ? `${stats.approvalRatio}%` : '—'}         icon={FiPercent}     accentColor="#0ea5e9" lightBg="#f0f9ff" helpText="Approved ÷ Submitted"  isLoading={loading} />
+          <MetricCard label="Total Leads"      value={stats?.total.toLocaleString('en-IN') ?? '—'}     icon={FiUsers}       accentColor="#3b82f6" lightBg="#eff6ff" helpText="In selected period"   isLoading={loading} />
+          <MetricCard label="Submitted"        value={stats?.submitted.toLocaleString('en-IN') ?? '—'} icon={FiFileText}    accentColor="#8b5cf6" lightBg="#f5f3ff" helpText="Sent to lenders"      isLoading={loading} />
+          <MetricCard label="Approved"         value={stats?.approved.toLocaleString('en-IN') ?? '—'}  icon={FiCheckCircle} accentColor="#22c55e" lightBg="#f0fdf4" helpText="Sanction issued"      isLoading={loading} />
+          <MetricCard label="Rejected"         value={stats?.rejected.toLocaleString('en-IN') ?? '—'}  icon={FiXCircle}     accentColor="#ef4444" lightBg="#fef2f2" helpText="Declined by lender"   isLoading={loading} />
+          <MetricCard label="Pending"          value={stats?.pending.toLocaleString('en-IN') ?? '—'}   icon={FiClock}       accentColor="#f59e0b" lightBg="#fffbeb" helpText="Awaiting action"       isLoading={loading} />
+          <MetricCard label="Disbursed"        value={stats?.disbursed.toLocaleString('en-IN') ?? '—'} icon={FiTrendingUp}  accentColor="#14b8a6" lightBg="#f0fdfa" helpText="Loan released"        isLoading={loading} />
+          <MetricCard label="Approval Ratio"   value={stats ? `${stats.approvalRatio}%` : '—'}         icon={FiPercent}     accentColor="#0ea5e9" lightBg="#f0f9ff" helpText="Approved ÷ Submitted" isLoading={loading} />
           <MetricCard label="Avg TAT (Apprvd)" value={stats ? `${stats.avgTAT}d` : '—'}               icon={FiCalendar}    accentColor="#ec4899" lightBg="#fdf2f8" helpText="Created → Last update" isLoading={loading} />
         </Grid>
 
@@ -558,7 +773,7 @@ const Dashboard: React.FC = () => {
                 <Text fontSize="11px" color="#94a3b8">Submitted → Approved → Rejected by month</Text>
               </Box>
               <HStack spacing={4}>
-                {([['#3b82f6','Submitted'],['#22c55e','Approved'],['#ef4444','Rejected']] as [string, string][]).map(([c,l]) => (
+                {([['#3b82f6', 'Submitted'], ['#22c55e', 'Approved'], ['#ef4444', 'Rejected']] as [string, string][]).map(([c, l]) => (
                   <HStack key={l} spacing={1.5}>
                     <Box w="8px" h="8px" borderRadius="2px" bg={c} />
                     <Text fontSize="10px" color="#94a3b8" fontWeight="500">{l}</Text>
@@ -668,15 +883,19 @@ const Dashboard: React.FC = () => {
                 {recent.map((c) => {
                   const sc = STATUS_CFG[c.status] || STATUS_CFG.PENDING
                   return (
-                    <Box key={c.id} bg="#f8fafc" border="1px solid #f1f5f9"
+                    <Box
+                      key={c.id} bg="#f8fafc" border="1px solid #f1f5f9"
                       borderRadius="10px" px={4} py={3} cursor="pointer"
                       transition="all 0.15s"
-                      _hover={{ bg: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                      _hover={{ bg: '#eff6ff', border: '1px solid #bfdbfe' }}
+                    >
                       <Flex justify="space-between" align="center">
                         <HStack spacing={3} flex={1} minW={0}>
-                          <Box w="34px" h="34px" borderRadius="10px" flexShrink={0}
+                          <Box
+                            w="34px" h="34px" borderRadius="10px" flexShrink={0}
                             bg={sc.bg} border={`1px solid ${sc.border}`}
-                            display="flex" alignItems="center" justifyContent="center">
+                            display="flex" alignItems="center" justifyContent="center"
+                          >
                             <Text fontSize="13px" fontWeight="800" color={sc.color}>
                               {c.name.charAt(0).toUpperCase()}
                             </Text>
@@ -707,10 +926,14 @@ const Dashboard: React.FC = () => {
           {/* Right column */}
           <VStack spacing={4} align="stretch">
 
-            {/* TAT */}
+            {/* ── TAT Breakdown — REAL DATA, not hardcoded ── */}
             <Panel>
               <Text fontSize="14px" fontWeight="700" color="#0f172a" mb={0.5}>Avg TAT Breakdown</Text>
-              <Text fontSize="11px" color="#94a3b8" mb={4}>Estimated pipeline stage split</Text>
+              <Text fontSize="11px" color="#94a3b8" mb={4}>
+                Actual avg days per pipeline stage (createdAt → updatedAt)
+              </Text>
+
+              {/* Total TAT from real data */}
               <HStack align="baseline" mb={5} spacing={1.5}>
                 {loading
                   ? <Skeleton height="32px" width="70px" borderRadius="6px" startColor="#f1f5f9" endColor="#e2e8f0" />
@@ -718,28 +941,48 @@ const Dashboard: React.FC = () => {
                       <Text fontSize="32px" fontWeight="800" color="#0f172a" lineHeight={1} letterSpacing="-0.04em">
                         {stats?.avgTAT ?? '—'}
                       </Text>
-                      <Text fontSize="13px" color="#94a3b8">days avg</Text>
+                      <Text fontSize="13px" color="#94a3b8">days avg (approved)</Text>
                     </>
                 }
               </HStack>
+
               <VStack spacing={3} align="stretch">
-                {TAT_STAGES.map((item) => (
-                  <Box key={item.stage}>
-                    <Flex justify="space-between" mb={1.5}>
-                      <Text fontSize="11px" color="#64748b">{item.stage}</Text>
-                      <Text fontSize="11px" fontWeight="700" color="#374151">
-                        {stats ? `${((stats.avgTAT * item.pct) / 100).toFixed(1)}d` : '—'}
-                      </Text>
-                    </Flex>
-                    <Box h="5px" bg="#f1f5f9" borderRadius="3px" overflow="hidden">
-                      <Box h="100%" borderRadius="3px" bg={item.color} w={`${item.pct}%`}
-                        style={{ transition: 'width 0.6s ease' }} />
-                    </Box>
-                  </Box>
-                ))}
+                {loading
+                  ? [...Array(4)].map((_, i) => (
+                      <Skeleton key={i} height="36px" w="100%" borderRadius="6px"
+                        startColor="#f8fafc" endColor="#f1f5f9" />
+                    ))
+                  : tatStages.map((item) => {
+                      // Width = share of this stage's days vs total real TAT
+                      const pct = totalRealTAT > 0
+                        ? Math.round((item.days / totalRealTAT) * 100)
+                        : 0
+
+                      return (
+                        <Box key={item.stage}>
+                          <Flex justify="space-between" mb={1.5}>
+                            <Text fontSize="11px" color="#64748b">{item.stage}</Text>
+                            <Text fontSize="11px" fontWeight="700" color="#374151">
+                              {item.days > 0 ? `${item.days}d avg` : '—'}
+                            </Text>
+                          </Flex>
+                          <Box h="5px" bg="#f1f5f9" borderRadius="3px" overflow="hidden">
+                            <Box
+                              h="100%" borderRadius="3px" bg={item.color}
+                              w={`${pct}%`}
+                              style={{ transition: 'width 0.6s ease' }}
+                            />
+                          </Box>
+                        </Box>
+                      )
+                    })
+                }
               </VStack>
+
               <Box mt={4} pt={3} borderTop="1px solid #f1f5f9">
-                <Text fontSize="10px" color="#cbd5e1">TAT = createdAt → updatedAt on approved leads</Text>
+                <Text fontSize="10px" color="#cbd5e1">
+                  Stage TAT = avg(updatedAt − createdAt) per status bucket · selected period
+                </Text>
               </Box>
             </Panel>
 
@@ -775,8 +1018,10 @@ const Dashboard: React.FC = () => {
                           </HStack>
                         </Flex>
                         <Box h="5px" bg="#f1f5f9" borderRadius="3px" overflow="hidden">
-                          <Box h="100%" borderRadius="3px" bg={c} w={`${pct}%`}
-                            style={{ transition: 'width 0.6s ease' }} />
+                          <Box
+                            h="100%" borderRadius="3px" bg={c} w={`${pct}%`}
+                            style={{ transition: 'width 0.6s ease' }}
+                          />
                         </Box>
                       </Box>
                     )

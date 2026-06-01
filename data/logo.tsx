@@ -28,6 +28,7 @@ export const Logo: React.FC<HTMLChakraProps<'div'>> = (props) => {
           noOfLines={1}
           overflow="hidden"
           textOverflow="ellipsis"
+            textDecoration="none" 
           maxW="125px"
         >
         Credit Engine

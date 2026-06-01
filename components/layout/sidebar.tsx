@@ -86,7 +86,7 @@ const NAV_ITEMS: NavItem[] = [
     section: 'Operations',
   },
   {
-    label: 'Lender List',
+    label: 'Lender Interface',
     href: '/dashboard/credit/lender',
     icon: BsBank2,
     section: 'Credit',
