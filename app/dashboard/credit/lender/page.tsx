@@ -92,6 +92,31 @@ const palette  = (n: string) => PALETTES[(n || 'A').charCodeAt(0) % PALETTES.len
 const fmtDate  = (d: string) =>
   new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 
+// ─── Icon Components (fix for react/jsx-no-duplicate-props) ──────────────────
+
+const BulkImportIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+)
+
+const AddLenderIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <line x1="12" y1="5" x2="12" y2="19"/>
+    <line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+)
+
+const DownloadTemplateIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+)
+
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, sub, accent }: {
@@ -878,15 +903,21 @@ export default function LenderIntelligencePage() {
                 </Select>
               </HStack>
               <HStack gap={2}>
-                <Button onClick={openBulk} h="36px" px={4} borderRadius="8px" fontSize="13px"
+                <Button
+                  onClick={openBulk}
+                  h="36px" px={4} borderRadius="8px" fontSize="13px"
                   fontWeight="700" bg="white" color="#374151" border="1px solid #E5E7EB"
                   _hover={{ bg: '#F9FAFB' }}
-                  leftIcon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>}>
+                  leftIcon={<BulkImportIcon />}
+                >
                   Bulk import
                 </Button>
-                <Button onClick={openAdd} h="36px" px={4} borderRadius="8px" fontSize="13px"
+                <Button
+                  onClick={openAdd}
+                  h="36px" px={4} borderRadius="8px" fontSize="13px"
                   fontWeight="700" bg="#1D4ED8" color="white" _hover={{ bg: '#1E40AF' }}
-                  leftIcon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>}>
+                  leftIcon={<AddLenderIcon />}
+                >
                   Add lender
                 </Button>
                 <HStack bg="#F3F4F6" p={0.5} borderRadius="8px" gap={0}>
@@ -1215,7 +1246,7 @@ export default function LenderIntelligencePage() {
               <Flex align="center" gap={2} mb={3} px={1}>
                 <Box w="6px" h="6px" borderRadius="full" bg="#7C3AED" flexShrink={0} />
                 <Text fontSize="12px" color="#6B7280">
-                  Select 2–3 lenders using the checkbox on each row, then click "Compare" to see side-by-side
+                  Select 2–3 lenders using the checkbox on each row, then click &quot;Compare&quot; to see side-by-side
                 </Text>
               </Flex>
             )}
@@ -1508,10 +1539,15 @@ export default function LenderIntelligencePage() {
                   name, minCibil, maxFoir, minIncome
                 </Box>
               </Text>
-              <Button onClick={downloadTemplate} variant="ghost" h="34px" borderRadius="8px"
+              <Button
+                onClick={downloadTemplate}
+                variant="ghost" h="34px" borderRadius="8px"
                 fontSize="12px" fontWeight="700" color="#2563EB" w="max-content"
-                leftIcon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
-                _hover={{ bg: '#EFF6FF' }}>Download sample template</Button>
+                leftIcon={<DownloadTemplateIcon />}
+                _hover={{ bg: '#EFF6FF' }}
+              >
+                Download sample template
+              </Button>
               <Box border="1.5px dashed" borderColor={csvFile ? '#059669' : '#D1D5DB'}
                 borderRadius="10px" py={8} px={5} textAlign="center" cursor="pointer"
                 bg={csvFile ? '#F0FDF4' : '#F9FAFB'}

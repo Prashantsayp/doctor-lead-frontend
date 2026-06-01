@@ -106,51 +106,74 @@ const formatBytes = (bytes: number) => {
  * Maps extracted keys (any casing/snake_case) → PolicyForm keys.
  * Returns EMPTY_FORM fields if nothing matches — modal will be blank for manual entry.
  */
-const mapExtractedToForm = (extracted: ExtractedData): Partial<PolicyForm> => {
-  const result: Partial<PolicyForm> = {}
+const mapExtractedToForm = (extracted: ExtractedData): PolicyForm => {
+  const result: Record<string, string> = {}
   const str = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 
+  // Each unique key appears exactly once — no duplicate property names
   const aliases: Record<string, keyof PolicyForm> = {
-    lender_name: 'lenderName',         lendername: 'lenderName',
-    bank_name: 'lenderName',           bankname: 'lenderName',
-    lenderName: 'lenderName',
+    lender_name:          'lenderName',
+    lendername:           'lenderName',
+    bank_name:            'lenderName',
+    bankname:             'lenderName',
+    lenderName:           'lenderName',
 
-    minCibil: 'minCibilScore',  minCibil: 'minCibilScore',
-    cibil_score: 'minCibilScore',      cibilscore: 'minCibilScore',
-    minCibil: 'minCibilScore',
+    minCibil:             'minCibil',
+    min_cibil:            'minCibil',
+    cibil_score:          'minCibil',
+    cibilscore:           'minCibil',
+    min_cibil_score:      'minCibil',
 
-    maxFOIR: 'maxFoir',               maxfoir: 'maxFoir',
-    foir: 'maxFoir',                   maxFoir: 'maxFoir',
+    maxFOIR:              'maxFoir',
+    maxfoir:              'maxFoir',
+    foir:                 'maxFoir',
+    maxFoir:              'maxFoir',
+    max_foir:             'maxFoir',
 
-    min_income: 'minIncome',           minincome: 'minIncome',
-    minimum_income: 'minIncome',       minIncome: 'minIncome',
+    min_income:           'minIncome',
+    minincome:            'minIncome',
+    minimum_income:       'minIncome',
+    minIncome:            'minIncome',
 
-    max_loan_amount: 'maxLoanAmount',  maxloanamount: 'maxLoanAmount',
-    maximum_loan: 'maxLoanAmount',     maxLoanAmount: 'maxLoanAmount',
+    max_loan_amount:      'maxLoanAmount',
+    maxloanamount:        'maxLoanAmount',
+    maximum_loan:         'maxLoanAmount',
+    maxLoanAmount:        'maxLoanAmount',
 
-    min_loan_amount: 'minLoanAmount',  minloanamount: 'minLoanAmount',
-    minimum_loan: 'minLoanAmount',     minLoanAmount: 'minLoanAmount',
+    min_loan_amount:      'minLoanAmount',
+    minloanamount:        'minLoanAmount',
+    minimum_loan:         'minLoanAmount',
+    minLoanAmount:        'minLoanAmount',
 
-    max_tenure: 'maxTenureMonths',     max_tenure_months: 'maxTenureMonths',
-    maxtenure: 'maxTenureMonths',      maxTenureMonths: 'maxTenureMonths',
+    max_tenure:           'maxTenureMonths',
+    max_tenure_months:    'maxTenureMonths',
+    maxtenure:            'maxTenureMonths',
+    maxTenureMonths:      'maxTenureMonths',
 
-    min_tenure: 'minTenureMonths',     min_tenure_months: 'minTenureMonths',
-    mintenure: 'minTenureMonths',      minTenureMonths: 'minTenureMonths',
+    min_tenure:           'minTenureMonths',
+    min_tenure_months:    'minTenureMonths',
+    mintenure:            'minTenureMonths',
+    minTenureMonths:      'minTenureMonths',
 
-    max_age: 'maxAge',                 maxage: 'maxAge',
-    maxAge: 'maxAge',
+    max_age:              'maxAge',
+    maxage:               'maxAge',
+    maxAge:               'maxAge',
 
-    min_age: 'minAge',                 minage: 'minAge',
-    minAge: 'minAge',
+    min_age:              'minAge',
+    minage:               'minAge',
+    minAge:               'minAge',
 
-    interest_rate_min: 'interestRateMin', min_interest_rate: 'interestRateMin',
-    interestRateMin: 'interestRateMin',
+    interest_rate_min:    'interestRateMin',
+    min_interest_rate:    'interestRateMin',
+    interestRateMin:      'interestRateMin',
 
-    interest_rate_max: 'interestRateMax', max_interest_rate: 'interestRateMax',
-    interestRateMax: 'interestRateMax',
+    interest_rate_max:    'interestRateMax',
+    max_interest_rate:    'interestRateMax',
+    interestRateMax:      'interestRateMax',
 
-    processing_fee: 'processingFee',   processingfee: 'processingFee',
-    processingFee: 'processingFee',
+    processing_fee:       'processingFee',
+    processingfee:        'processingFee',
+    processingFee:        'processingFee',
   }
 
   for (const [rawKey, rawVal] of Object.entries(extracted)) {
@@ -159,7 +182,7 @@ const mapExtractedToForm = (extracted: ExtractedData): Partial<PolicyForm> => {
     if (formKey) result[formKey] = str(rawVal)
   }
 
-  return result
+  return { ...EMPTY_FORM, ...result }
 }
 
 const ACCEPT_TYPES = '.pdf,.doc,.docx,.txt,.png,.jpg,.jpeg'
@@ -190,7 +213,7 @@ interface PolicyModalProps {
   onRevert: () => void
   isSaving: boolean
   autoFilledCount: number
-  isManualMode: boolean   // true when extraction returned nothing
+  isManualMode: boolean
 }
 
 function PolicyReviewModal({
@@ -207,7 +230,6 @@ function PolicyReviewModal({
     return !!(field?.required && touched[key] && !form[key].trim())
   }
 
-  // Header colours driven by mode
   const headerBg    = isManualMode ? T.amberLight : T.greenLight
   const headerIcon  = isManualMode ? '✏️' : '✅'
   const headerColor = isManualMode ? T.amber : T.green
@@ -277,7 +299,6 @@ function PolicyReviewModal({
         )}
 
         <ModalBody px={6} py={5}>
-          {/* Section label */}
           <HStack spacing={2} mb={5}>
             <Text fontSize="10px" fontWeight="700" color={T.textMuted} textTransform="uppercase" letterSpacing="1px">
               ✏️ Policy Fields
@@ -286,9 +307,9 @@ function PolicyReviewModal({
 
           <VStack spacing={5} align="stretch">
             {FORM_FIELDS.map((field) => {
-              const val       = form[field.key]
+              const val        = form[field.key]
               const autofilled = !isManualMode && !!val
-              const error     = isError(field.key)
+              const error      = isError(field.key)
 
               return (
                 <FormControl key={field.key} isRequired={field.required} isInvalid={error}>
@@ -450,6 +471,7 @@ export default function UploadPolicyPage() {
     setDragging(false)
     const f = e.dataTransfer.files?.[0]
     if (f) applyFile(f)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleDragOver  = (e: React.DragEvent) => { e.preventDefault(); setDragging(true) }
@@ -485,14 +507,10 @@ export default function UploadPolicyPage() {
       const mapped    = mapExtractedToForm(extracted)
       const count     = Object.values(mapped).filter(v => v !== '').length
 
-      // ── KEY LOGIC ──
-      // count === 0 → extraction failed / empty → manual mode
-      // count  > 0 → auto-fill mode
       const manual = count === 0
-      const filled = { ...EMPTY_FORM, ...mapped }
 
-      setForm(filled)
-      setOriginalForm(filled)
+      setForm(mapped)
+      setOriginalForm(mapped)
       setAutoFilledCount(count)
       setIsManualMode(manual)
       setModalOpen(true)
@@ -510,7 +528,6 @@ export default function UploadPolicyPage() {
     } catch (err: any) {
       console.error(err)
 
-      // ── Even if the upload API itself errors, open blank modal for manual entry ──
       setForm({ ...EMPTY_FORM })
       setOriginalForm({ ...EMPTY_FORM })
       setAutoFilledCount(0)
@@ -537,153 +554,71 @@ export default function UploadPolicyPage() {
 
   const handleRevert = () => setForm({ ...originalForm })
 
-  // ── Save → POST /lender-policy/create-policy ──
+  // ── Save ──
 
   const handleSave = async () => {
+    const missing = FORM_FIELDS.filter(f => f.required && !String(form[f.key] || '').trim())
 
-  const missing = FORM_FIELDS.filter(
-    f =>
-      f.required &&
-      !String(form[f.key] || '').trim()
-  )
-
-  if (missing.length > 0) {
-
-    toast({
-      title: `${missing.length} required field(s) missing`,
-      description: missing
-        .map(f => f.label)
-        .join(', '),
-      status: 'warning',
-      duration: 4000,
-      isClosable: true,
-      position: 'top-right',
-    })
-
-    return
-  }
-
-  try {
-
-    setIsSaving(true)
-
-    const payload = {
-
-      lenderName:
-        form.lenderName,
-
-      minCibil:
-        Number(form.minCibil),
-
-      maxCibil:
-        Number(form.maxCibil),
-
-      minLoanAmount:
-        Number(form.minLoanAmount),
-
-      maxLoanAmount:
-        Number(form.maxLoanAmount),
-
-      allowedProfessions:
-        form.allowedProfessions || [],
-
-      allowedLocations:
-        form.allowedLocations || [],
-
-      blockedLocations:
-        form.blockedLocations || [],
-
-      employmentTypes:
-        form.employmentTypes || [],
-
-      maxFOIR:
-        form.maxFOIR
-          ? Number(form.maxFOIR)
-          : undefined,
-
-      roi:
-        form.roi
-          ? Number(form.roi)
-          : undefined,
-
-      minIncome:
-        form.minIncome
-          ? Number(form.minIncome)
-          : undefined,
-
-      isActive: true,
-
-      remarks:
-        form.remarks,
-
-      policyType:
-        form.policyType,
+    if (missing.length > 0) {
+      toast({
+        title: `${missing.length} required field(s) missing`,
+        description: missing.map(f => f.label).join(', '),
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top-right',
+      })
+      return
     }
 
-    console.log(
-      'SAVE PAYLOAD',
-      payload
-    )
+    try {
+      setIsSaving(true)
 
-    await axios.post(
-      `${API_BASE}/lender-policy/create-policy`,
-      payload
-    )
+      const payload = {
+        lenderName:        form.lenderName,
+        minCibil:          Number(form.minCibil),
+        maxCibil:          Number(form.maxCibil),
+        minLoanAmount:     Number(form.minLoanAmount),
+        maxLoanAmount:     Number(form.maxLoanAmount),
+        allowedProfessions: form.allowedProfessions || [],
+        allowedLocations:   form.allowedLocations   || [],
+        blockedLocations:   form.blockedLocations    || [],
+        employmentTypes:    form.employmentTypes     || [],
+        maxFOIR:    form.maxFOIR    ? Number(form.maxFOIR)    : undefined,
+        roi:        form.roi        ? Number(form.roi)        : undefined,
+        minIncome:  form.minIncome  ? Number(form.minIncome)  : undefined,
+        isActive:   true,
+        remarks:    form.remarks,
+        policyType: form.policyType,
+      }
 
-    toast({
-      title:
-        'Policy saved successfully!',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-      position: 'top-right',
-    })
+      await axios.post(`${API_BASE}/lender-policy/create-policy`, payload)
 
-    setModalOpen(false)
+      toast({ title: 'Policy saved successfully!', status: 'success', duration: 3000, isClosable: true, position: 'top-right' })
 
-    setFile(null)
+      setModalOpen(false)
+      setFile(null)
+      setForm({ ...EMPTY_FORM })
+      setOriginalForm({ ...EMPTY_FORM })
+      setAutoFilledCount(0)
+      setIsManualMode(false)
 
-    setForm({
-      ...EMPTY_FORM,
-    })
-
-    setOriginalForm({
-      ...EMPTY_FORM,
-    })
-
-    setAutoFilledCount(0)
-
-    setIsManualMode(false)
-
-  } catch (err: any) {
-
-    console.error(err)
-
-    toast({
-      title: 'Save failed',
-
-      description:
-        Array.isArray(
-          err?.response?.data?.message
-        )
+    } catch (err: any) {
+      console.error(err)
+      toast({
+        title: 'Save failed',
+        description: Array.isArray(err?.response?.data?.message)
           ? err.response.data.message.join(', ')
-          : err?.response?.data?.message ||
-            'Something went wrong.',
-
-      status: 'error',
-
-      duration: 4000,
-
-      isClosable: true,
-
-      position: 'top-right',
-    })
-
-  } finally {
-
-    setIsSaving(false)
+          : err?.response?.data?.message || 'Something went wrong.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+        position: 'top-right',
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
-}
 
   // ── Render ──
 
@@ -867,9 +802,9 @@ export default function UploadPolicyPage() {
           {/* ── How It Works ── */}
           <SimpleGrid columns={3} spacing={3} mb={5}>
             {[
-              { icon: '📤', title: 'Upload',        desc: 'Select or drag any policy document' },
-              { icon: '🤖', title: 'AI Extraction',  desc: 'Key fields auto-detected instantly' },
-              { icon: '📋', title: 'Review & Save',  desc: 'Verify auto-filled or enter manually' },
+              { icon: '📤', title: 'Upload',       desc: 'Select or drag any policy document' },
+              { icon: '🤖', title: 'AI Extraction', desc: 'Key fields auto-detected instantly' },
+              { icon: '📋', title: 'Review & Save', desc: 'Verify auto-filled or enter manually' },
             ].map((step) => (
               <Box
                 key={step.title}
