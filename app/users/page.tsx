@@ -298,7 +298,7 @@ export default function UsersPage() {
     const token = getToken(); if (!token) return
     setSavingAdd(true)
     try {
-      const payload = { name: name.trim(), email: email.trim().toLowerCase(), password: password.trim(), designation: designation.trim(), role: userRole, status }
+      const payload = { name: name.trim(), email: email.trim().toLowerCase(), password: password.trim(), designation: designation.trim(), role: userRole}
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/create-users`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
       })
@@ -322,7 +322,7 @@ export default function UsersPage() {
     if (!eEmail.trim()) return toast({ title: 'Email required', status: 'warning' })
     setSavingEdit(true)
     try {
-      const payload = { name: eName.trim(), email: eEmail.trim().toLowerCase(), designation: eDesignation.trim(), role: eRole, status: eStatus }
+      const payload = { name: eName.trim(), email: eEmail.trim().toLowerCase(), designation: eDesignation.trim(), role: eRole }
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/update-users/${selected._id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
       })
